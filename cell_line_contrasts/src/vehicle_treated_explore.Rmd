@@ -1,0 +1,231 @@
+---
+title: "vehicle_treated_explore"
+output: html_document
+---
+
+```{r, message=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+library(tibble)
+library(EnhancedVolcano)
+```
+
+```{r}
+vehicle_treated <- readRDS("../working_data/vehicle_treated_processed.rds") # processed dataset
+
+# import motif matrix object for ATAC add-on/switching
+jaspar_motifs <- readRDS("../working_data/vehicle_jaspar_motifs.rds")
+# cisbp_motifs <- readRDS("../working_data/vehicle_cisbp_motifs.rds")
+
+# genes near/associated with DA ranges for each line -- just lists
+CHLA10_accessible_genes <- read.csv("../results/vehicle_treated_CHLA10_accessible_genes.csv")
+CHLA10_accessible_genes <- CHLA10_accessible_genes$x
+TC71_accessible_genes <- read.csv("../results/vehicle_treated_TC71_accessible_genes.csv")
+TC71_accessible_genes <- TC71_accessible_genes$x
+
+# DE genes for each line -- just lists
+CHLA10_upreg <- read.csv("../results/vehicle_treated_CHLA10_upreg_genes.csv")
+CHLA10_upreg <- CHLA10_upreg$x
+TC71_upreg <- read.csv("../results/vehicle_treated_TC71_upreg_genes.csv")
+TC71_upreg <- TC71_upreg$x
+
+# DE gene table
+cellLine_de_genes <- read.csv("../results/vehicle_treated_cellLine_de_genes.csv")
+
+# Target TF list
+target_tfs <- read.csv("../../gene_lists/TFs_of_interest.txt", header = F) %>% pull(V1)
+
+# Genes directly correlated with ATAC regions
+link_ranges <- Links(vehicle_treated)
+linked_genes <- tibble(gene = link_ranges$gene, peak=link_ranges$peak, pval=link_ranges$pvalue) %>% 
+  dplyr::arrange(pval)
+
+# Motif enrichment in DA ranges -- tables
+CHLA10_enr_jaspar <- read.csv("../results/vehicle_CHLA10_jaspar_enrichment.csv")
+CHLA10_enr_cisbp <- read.csv("../results/vehicle_CHLA10_cisbp_enrichment.csv")
+TC71_enr_jaspar <- read.csv("../results/vehicle_TC71_jaspar_enrichment.csv")
+TC71_enr_cisbp <- read.csv("../results/vehicle_TC71_cisbp_enrichment.csv")
+```
+
+```{r}
+# Identify DA motifs
+DefaultAssay(vehicle_treated) <- "cisBP"
+vehicle_da_cisbp <- FindMarkers(
+  object = vehicle_treated,
+  ident.1 = 'CHLA10',
+  ident.2 = 'TC71',
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+) %>% dplyr::arrange(desc(abs(avg_diff)))
+
+DefaultAssay(vehicle_treated) <- "JASPAR"
+vehicle_da_jaspar <- FindMarkers(
+  object = vehicle_treated,
+  ident.1 = 'CHLA10',
+  ident.2 = 'TC71',
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+) %>% dplyr::arrange(desc(abs(avg_diff)))
+# add gene name for JASPAR
+match_idx <- match(rownames(vehicle_da_jaspar), CHLA10_enr_jaspar$motif)
+vehicle_da_jaspar$gene <- CHLA10_enr_jaspar$motif.name[match_idx]
+rm(match_idx)
+```
+
+```{r}
+# chromvar volcano plots
+EnhancedVolcano(vehicle_da_cisbp, lab = rownames(vehicle_da_cisbp), x = 'avg_diff', y = 'p_val_adj', 
+                selectLab = c("ZEB1", "ZEB2", "SMAD3", "SMAD4", "JUN", "RREB1", "FOSL2"), 
+                pointSize=3, drawConnectors=TRUE, labSize=6, labFace = "bold",
+                boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf,
+                title = "DA motifs via chromVAR \n vehicle treated CHLA10 vs TC71 \n cisbp motifs")
+EnhancedVolcano(vehicle_da_jaspar, lab = vehicle_da_jaspar$gene, x = 'avg_diff', y = 'p_val_adj', 
+                selectLab = c("ZEB1", "EWSR1-FLI1", "SMAD5", "SMAD3", "Smad4", "SMAD2::SMAD3", "RREB1", "FOSL2"), 
+                pointSize=3, drawConnectors=TRUE, labSize=6, labFace = "bold",
+                boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf, 
+                title = "DA motifs via chromVAR \n vehicle treated CHLA10 vs TC71 \n jaspar motifs")
+
+```
+
+
+
+```{r}
+MotifPlot(
+  object = vehicle_treated,
+  motifs = head(rownames(vehicle_da_cisbp), 20),
+  assay = 'ATAC'
+) + ggtitle("vehicle top differentially active cisbp motifs CHLA10 vs TC71")
+```
+
+
+```{r}
+# volcano plot -- needs direct motif enrichment -- in progress of getting this
+EnhancedVolcano(CHLA10_enr_cisbp, lab=CHLA10_enr_cisbp$motif.name, x="fold.enrichment", y="p.adjust",
+                xlab = "Fold Enrichment", 
+                selectLab = c("ZEB1", "ZEB2", "SMAD3", "SMAD4", "JUN", "RREB1", "FOSL2"), 
+                pCutoff = 1e-2, FCcutoff=1.5, pointSize=3, drawConnectors=TRUE, labSize=6,
+                col=c("lightgray", "darkgray", "darkgray", "red"), labCol="black", labFace = "bold",
+                boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf) + coord_flip() + 
+  ggtitle("TF motif enrichment in vehicle induced differentially \n accessible peaks - CHLA10")
+
+EnhancedVolcano(TC71_enr_cisbp, lab=TC71_enr_cisbp$motif.name, x="fold.enrichment", y="p.adjust",
+                xlab = "Fold Enrichment", 
+                selectLab = c("ZEB1", "ZEB2", "SMAD3", "SMAD4", "JUN", "RREB1", "FOSL2"), 
+                pCutoff = 1e-2, FCcutoff=1.5, pointSize=3, drawConnectors=TRUE, labSize=6,
+                col=c("lightgray", "darkgray", "darkgray", "red"), labCol="black", labFace = "bold",
+                boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf) + coord_flip() + 
+  ggtitle("TF motif enrichment in vehicle induced differentially \n accessible peaks - TC71")
+
+```
+
+
+```{r}
+# changes motif configuration
+vehicle_treated@assays[["ATAC"]]@motifs <- jaspar_motifs
+MotifPlot(
+  object = vehicle_treated,
+  motifs = head(rownames(vehicle_da_jaspar), 20),
+  assay = 'ATAC'
+) + ggtitle("vehicle top differentially active jaspar motifs CHLA10 vs TC71")
+```
+
+
+```{r}
+DefaultAssay(vehicle_treated) <- "RNA"
+FeaturePlot_scCustom(vehicle_treated, features="tgfb_response1", reduction = "wnn.umap") + ggtitle("vehicle treated vehicle response")
+Idents(vehicle_treated) <- "cell_line"
+DimPlot_scCustom(vehicle_treated, reduction = "wnn.umap")
+FeaturePlot_scCustom(vehicle_treated, features="ZEB1", reduction = "wnn.umap")
+
+DefaultAssay(vehicle_treated) <- "cisBP"
+FeaturePlot_scCustom(seurat_object = vehicle_treated, features = "ZEB1", reduction = "wnn.umap") + ggtitle("cisbp ZEB1 motif activity")
+
+DefaultAssay(vehicle_treated) <- "JASPAR"
+FeaturePlot_scCustom(seurat_object = vehicle_treated, features = "MA0103.3", reduction = "wnn.umap") + ggtitle("JASPAR ZEB1 motif activity")
+
+```
+
+```{r}
+# TC71 has a lot of accessible genes, let's filter it down
+DefaultAssay(vehicle_treated) <- "ATAC"
+marker_ranges <- FindMarkers(
+  object = vehicle_treated, ident.1 = "CHLA10", ident.2 = "TC71", test.use = 'wilcox', min.pct = 0.1)
+open_tc71 <- rownames(marker_ranges[marker_ranges$avg_log2FC < 0 & marker_ranges$p_val_adj <= 1e-100, ])
+closest_genes_tc71 <- ClosestFeature(vehicle_treated, regions = open_tc71)
+tc71_accessible_genes <- unique(closest_genes_tc71$gene_name) # from 11046 to 726
+```
+
+
+```{r}
+# intersect genelists, run gene ontology
+chla10_genes <- intersect(CHLA10_accessible_genes, CHLA10_upreg)
+tc71_genes <- intersect(TC71_accessible_genes, TC71_upreg)
+
+alternate_peak_genes <- intersect(CHLA10_accessible_genes, TC71_accessible_genes)
+
+t2g_hallmarks <- msigdbr(species = "Homo sapiens", collection ="H") %>%
+  dplyr::select(gs_name, gene_symbol)
+t2g_reactome <- msigdbr(species = "Homo sapiens", collection ="C2", subcollection = "CP:REACTOME") %>%
+  dplyr::select(gs_name, gene_symbol)
+
+GOALL <- enrichGO(alternate_peak_genes, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+hallmarks <- enricher(alternate_peak_genes, TERM2GENE = t2g_hallmarks)
+react <- enricher(alternate_peak_genes, TERM2GENE = t2g_reactome)
+```
+
+```{r}
+dotplot(GOALL, title = "vehicle treated alternate peaks goall")
+# dotplot(hallmarks, title = "vehicle treated alternate peaks hallmarks")
+# dotplot(react, title = "vehicle treated alternate peaks reactome")
+
+```
+
+
+
+
+
+```{r}
+# volcano plot -- needs direct motif enrichment -- in progress of getting this
+EnhancedVolcano(CHLA10_enr_jaspar, lab=CHLA10_enr_jaspar$motif.name, x="fold.enrichment", y="p.adjust",
+                xlab = "Fold Enrichment", 
+                selectLab = c("ZEB1", "EWSR1-FLI1", "SMAD5", "SMAD3", "Smad4", "SMAD2::SMAD3", "RREB1", "FOSL2"), 
+                pCutoff = 1e-2, FCcutoff=1.5, pointSize=3, drawConnectors=TRUE, labSize=6,
+                col=c("lightgray", "darkgray", "darkgray", "red"), labCol="black", labFace = "bold",
+                boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf) + coord_flip() + 
+  ggtitle("TF motif enrichment in vehicle induced differentially \n accessible peaks - CHLA10")
+
+EnhancedVolcano(TC71_enr_jaspar, lab=TC71_enr_jaspar$motif.name, x="fold.enrichment", y="p.adjust",
+                xlab = "Fold Enrichment", 
+                selectLab = c("ZEB1", "EWSR1-FLI1", "SMAD5", "SMAD3", "Smad4", "SMAD2::SMAD3", "RREB1", "FOSL2"), 
+                pCutoff = 1e-2, FCcutoff=1.5, pointSize=3, drawConnectors=TRUE, labSize=6,
+                col=c("lightgray", "darkgray", "darkgray", "red"), labCol="black", labFace = "bold",
+                boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf) + coord_flip() + 
+  ggtitle("TF motif enrichment in vehicle induced differentially \n accessible peaks - TC71")
+
+
+```
+
+
+

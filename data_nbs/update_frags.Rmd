@@ -1,0 +1,94 @@
+---
+title: "update_frags"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(dplyr)
+library(stringr)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(EnsDb.Hsapiens.v86)
+```
+
+
+```{r}
+# load object, count fragment files
+vtp_tgfb_multi <- readRDS("../../VTP_SC_seq/ews_tgfb_seurat.rds")
+num_fragments <- length(vtp_tgfb_multi@assays[["ATAC"]]@fragments)
+```
+
+
+```{r, message=FALSE}
+# fix object annotations
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+seqlevelsStyle(annotations) <- "UCSC"
+genome(annotations) <- "hg38"
+Annotation(vtp_tgfb_multi[["ATAC"]]) <- annotations
+```
+
+
+```{r}
+# manually input new fragment filepaths, match path names with vtp_tgfb_multi$dataset names 
+new_fragment_file_paths <- c(
+  "EWS5_MO_P1_redo" = 
+    file.path("/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/source_data/EWS5_MO_P1_redo/outs/atac_fragments.tsv.gz"),
+  "EWS5_MO_P2" = 
+    file.path("/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/source_data/EWS5_MO_P2/atac_fragments.tsv.gz"),
+  "EWS5_MO_P3" = 
+    file.path("/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/source_data/EWS5_MO_P3/atac_fragments.tsv.gz"),
+  "EWS5_MO_P4" =
+    file.path("/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/source_data/EWS5_MO_P4/atac_fragments.tsv.gz"),
+  "EWS5_MO_P5_redo" =
+    file.path("/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/source_data/EWS5_MO_P5_redo/atac_fragments.tsv.gz")
+)
+```
+
+
+```{r}
+for (i in 1:num_fragments) {
+  current_frag_obj <- vtp_tgfb_multi@assays[["ATAC"]]@fragments[[i]]
+  current_path <- current_frag_obj@path[1]
+  print(paste0("Old path for fragment ", i, ": ", current_path))
+  new_full_path <- new_fragment_file_paths[[i]]
+  updated_frag_obj <- UpdatePath(object = current_frag_obj, new.path = new_full_path)
+  vtp_tgfb_multi@assays[["ATAC"]]@fragments[[i]] <- updated_frag_obj
+  print(paste0("New path for fragment ", i, ": ", vtp_tgfb_multi@assays[["ATAC"]]@fragments[[i]]@path[1]))
+}
+
+```
+
+
+```{r}
+Idents(vtp_tgfb_multi) <- "cell_line_cond"
+idents.plot <- c("CHLA10_vehicle", "CHLA10_TGFB1", "CHLA10_VTP+TGFB1", "TC71_vehicle", "TC71_TGFB1", "TC71_VTP+TGFB1")
+vtp_tgfb_multi <- SortIdents(vtp_tgfb_multi)
+```
+
+
+```{r}
+p1 <- CoveragePlot(
+  object = vtp_tgfb_multi,
+  region = "TGFBI",
+  features = "TGFBI",
+  expression.assay = "RNA",
+  idents = idents.plot,
+  extend.upstream = 500,
+  extend.downstream = 10000
+)
+
+p2 <- CoveragePlot(
+  object = vtp_tgfb_multi,
+  region = "ZEB1",
+  features = "ZEB1",
+  expression.assay = "RNA",
+  idents = idents.plot,
+  extend.upstream = 8000,
+  extend.downstream = 5000
+)
+
+patchwork::wrap_plots(p1, p2, ncol = 1)
+
+```
+

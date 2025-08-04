@@ -1,0 +1,124 @@
+---
+title: "TC71_postprocess_exp"
+output: html_document
+---
+
+```{r, message=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+library(tibble)
+```
+
+```{r}
+TC71 <- readRDS("../working_data/TC71_processed.rds")
+TC71_enr_mtf <- read.csv("../results/TC71_enriched_motifs.csv")
+TC71_link_ranges <- Links(TC71)
+TC71_linked_genes <- tibble(gene = TC71_link_ranges$gene, peak=TC71_link_ranges$peak, pval=TC71_link_ranges$pvalue)
+tgfb1_response_genes <- read.csv("../gene_lists/Ewing_TGFB1_response_ACP.txt")
+target_tfs <- read.csv("../gene_lists/TFs_of_interest.txt", header = F) %>% pull(V1)
+```
+
+
+```{r}
+DefaultAssay(TC71) <- "chromvar"
+FeaturePlot_scCustom(TC71, features = "MA0103.3", min.cutoff = 'q10', max.cutoff = 'q90', pt.size = 0.1, reduction = "wnn.umap") + ggtitle("ZEB1 motif actvitiy TC71") # ZEB1
+FeaturePlot_scCustom(TC71, features = "MA1557.1", min.cutoff = 'q10', max.cutoff = 'q90', pt.size = 0.1, reduction = "wnn.umap") + ggtitle("Most enriched motif in TC71 DA peaks -- SMAD5") # SMAD5, top hit for enrichment
+
+```
+
+
+```{r}
+# identify DA motifs
+DefaultAssay(TC71) <- "chromvar"
+TC71_da_motifs <- FindMarkers(
+  object = TC71,
+  ident.1 = 'TGFB1',
+  ident.2 = 'vehicle',
+  only.pos = TRUE,
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+)
+# add gene name
+TC71_da_motifs$motif <- rownames(TC71_da_motifs)
+TC71_da_motifs <- merge(
+  TC71_da_motifs,
+  TC71_enr_mtf[, c("motif", "motif.name")],
+  by = "motif",
+  all.x = TRUE)
+TC71_da_motifs <- arrange(TC71_da_motifs, p_val_adj)
+```
+
+```{r}
+MotifPlot(
+  object = TC71,
+  motifs = head(TC71_da_motifs$motif, 20),
+  assay = 'ATAC'
+) + ggtitle("TC71 top differentially active motifs TGFB1 vs veh")
+
+```
+
+
+```{r}
+DefaultAssay(TC71) <- "RNA"
+TC71 <- AddModuleScore(TC71, features=tgfb1_response_genes, name="tgfb_response")
+
+FeaturePlot_scCustom(TC71, features="tgfb_response1", reduction = "wnn.umap") + ggtitle("TC71 tgfb1 response")
+
+```
+
+```{r}
+# checking target TFs for motif enrichment
+target_tfs[5] <- "Smad4"
+
+# are the TF motifs differentially accessible?
+target_accessible <- TC71_da_motifs %>%
+  dplyr::filter(motif.name %in% target_tfs) %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::mutate(order = match(motif.name, target_tfs)) %>%
+  dplyr::arrange(order) %>%
+  dplyr::select(motif.name, p_val_adj)
+
+# are the TF motifs enriched in differentially accessible peaks?
+target_enrich <- TC71_enr_mtf %>%
+  dplyr::filter(motif.name %in% target_tfs) %>%
+  dplyr::filter(p.adjust < 0.05) %>%
+  dplyr::mutate(order = match(motif.name, target_tfs)) %>%
+  dplyr::arrange(order) %>%
+  dplyr::select(motif.name, p.adjust)
+
+# are the TF expressions and accessibilities correlated?
+target_linked <- TC71_linked_genes %>%
+  dplyr::mutate(order = match(gene, target_tfs)) %>%
+  dplyr::arrange(order) %>% dplyr::select(-order) %>%
+  dplyr::filter(gene %in% target_tfs)
+
+print("Target TFs DA via ChromVAR, TC71")
+print(target_accessible)
+print("Target TFs enriched in DA peaks, TC71")
+print(target_enrich)
+print("Target TFs correlating expression and accessibility, TC71")
+print(as.data.frame(target_linked))
+```
+

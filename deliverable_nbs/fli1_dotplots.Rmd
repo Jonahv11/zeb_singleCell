@@ -1,0 +1,175 @@
+---
+title: "fli1_dotplots"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(scCustomize)
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(knitr)
+```
+
+```{r}
+#Set figure outputs
+knitr::opts_chunk$set(dpi=600,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = "/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/figs/fli1KD_dotplots_",  dev = c("svglite", "png"))
+```
+
+```{r}
+fli1_multi <- readRDS("../../fli1_multiome/data/knockdown_seurat.rds")
+Idents(fli1_multi) <- "cell_line"
+DefaultAssay(fli1_multi) <- "GeneExpressionMatrix"
+fli1_multi2 <- NormalizeData(fli1_multi)
+```
+
+```{r}# used to look at significance, probably won't be used again
+CHLA10_trt <- FindMarkers(fli1_multi2, ident.1 = "CHLA10_shFLI1", ident.2 = "CHLA10_shNS", logfc.threshold = 0.001)
+A673_trt <- FindMarkers(fli1_multi2, ident.1 = "A673_shFLI1", ident.2 = "A673_shNS", logfc.threshold = 0.001)
+PDX305_trt <- FindMarkers(fli1_multi2, ident.1 = "PDX305_shFLI1", ident.2 = "PDX305_shNS", logfc.threshold = 0.001)
+TC71_trt <- FindMarkers(fli1_multi, ident.1 = "TC71_TGFB1", ident.2 = "TC71_vehicle", logfc.threshold = 0.001)
+veh_cellline <- FindMarkers(fli1_multi, ident.1 = "CHLA10_vehicle", "TC71_vehicle")
+tgfb1_cellline <- FindMarkers(fli1_multi, "CHLA10_TGFB1", "TC71_TGFB1")
+```
+
+```{r}#
+DotPlot_scCustom(fli1_multi, features = "ZEB1", scale = F)
+DotPlot_scCustom(fli1_multi, features = "ZEB1", scale = T)
+DotPlot_scCustom(fli1_multi2, features = "ZEB1", scale = F)
+DotPlot_scCustom(fli1_multi2, features = "ZEB1", scale = T)
+
+# DotPlot(fli1_multi, features = "ZEB1", )
+```
+
+
+```{r, zeb1_scaled}
+p1 <- DotPlot(fli1_multi2, features = "ZEB1")
+p_data <- p1$data
+identity_levels <- levels(factor(p_data$id))
+p_data_labeled <- p_data %>%
+  mutate(
+    label_text = paste0("Avg expr: ", round(avg.exp, 2),
+                        "\n% expr: ", round(pct.exp, 1), "%")
+  )
+
+# cust_dotplot <- 
+ggplot(p_data_labeled, aes(x = features.plot, y = id)) +
+  geom_tile(fill = "white",color = "white", linewidth = 0.5) +
+  geom_point(aes(size = pct.exp, color = avg.exp), stroke = 0.5) +
+  geom_text(aes(label = label_text), size = 3, nudge_x = 0.175) +
+  scale_color_gradientn(colors = viridis_inferno_dark_high, limits = c(0,9), breaks = c(0,3,6,9), name="Average expr (log counts)") +
+  scale_size_continuous(range = c(1,9), name = "% Expression", breaks = c(0,25,50), limits = c(0,50)) +
+  # scale_size_area(max_size = 8, name = "expression %") +
+  labs(y = "Treatment" , title = "ZEB1 expression by treatment") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"), 
+  )
+ 
+```
+
+
+```{r, zeb1_sized}
+p1 <- DotPlot(fli1_multi2, features = "ZEB1")
+p_data <- p1$data
+identity_levels <- levels(factor(p_data$id))
+p_data_labeled <- p_data %>%
+  mutate(
+    label_text = paste0("Avg expr: ", round(avg.exp, 2),
+                        "\n% expr: ", round(pct.exp, 1), "%")
+  )
+
+# cust_dotplot <- 
+ggplot(p_data_labeled, aes(x = features.plot, y = id)) +
+  geom_tile(fill = "white",color = "white", linewidth = 0.5) +
+  geom_point(aes(size = pct.exp, color = avg.exp), stroke = 0.5) +
+  geom_text(aes(label = label_text), size = 3, nudge_x = 0.175) +
+  scale_color_gradientn(colors = viridis_inferno_dark_high, limits = c(0,9), breaks = c(0,3,6,9), name="Average expr (log counts)") +
+  scale_size_continuous(range = c(1,9), name = "% Expression", breaks = c(0,30,60,90), limits = c(0,100)) +
+  # scale_size_area(max_size = 8, name = "expression %") +
+  labs(y = "Treatment" , title = "ZEB1 expression by treatment") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"), 
+  )
+ 
+```
+
+
+```{r, zeb2}
+p1 <- DotPlot(fli1_multi2, features = "ZEB2")
+p_data <- p1$data
+identity_levels <- levels(factor(p_data$id))
+p_data_labeled <- p_data %>%
+  mutate(
+    label_text = paste0("Avg expr: ", round(avg.exp, 2),
+                        "\n% expr: ", round(pct.exp, 1), "%")
+  )
+
+# cust_dotplot <- 
+ggplot(p_data_labeled, aes(x = features.plot, y = id)) +
+  geom_tile(fill = "white",color = "white", linewidth = 0.5) +
+  geom_point(aes(size = pct.exp, color = avg.exp), stroke = 0.5) +
+  geom_text(aes(label = label_text), size = 3, nudge_x = 0.165) +
+  scale_color_gradientn(colors = viridis_inferno_dark_high, limits = c(0,9), breaks = c(0,3,6,9), name="Average expr (log counts)") +
+  scale_size_continuous(range = c(1,9), name = "% Expression", breaks = c(0,30,60,90), limits = c(0,100)) +
+  # scale_size_area(max_size = 8, name = "expression %") +
+  labs(y = "Treatment" , title = "ZEB2 expression by treatment") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"), 
+  )
+ 
+```
+
+
+### expression values are weird, manually investigate
+
+```{r}#
+# manually check expression of a gene since raw/normalized counts are jumbled
+target_gene <- "ZEB1"
+identity_column <- "cond"
+unique_idents <- unique(fli1_multi@meta.data[[identity_column]])
+avg_exp_list <- list()
+pct_exp_list <- list()
+
+for (ident in unique_idents) {
+  cells_in_ident <- WhichCells(fli1_multi, idents = ident)
+  expression_data <- GetAssayData(
+    object = fli1_multi,
+    assay = "GeneExpressionMatrix",
+    slot = "counts"
+  )[target_gene, cells_in_ident]
+  raw_counts_data <- GetAssayData(
+    object = fli1_multi,
+    assay = "GeneExpressionMatrix",
+    slot = "counts"
+  )[target_gene, cells_in_ident]
+  avg_exp <- mean(expression_data)
+  avg_exp_list[[ident]] <- avg_exp
+  pct_exp <- sum(raw_counts_data > 0) / length(raw_counts_data) * 100
+  pct_exp_list[[ident]] <- pct_exp
+}
+
+results_df <- data.frame(
+  # Identity = names(avg_exp_list),
+  Average_Expression = unlist(avg_exp_list),
+  Percentage_Expressed = unlist(pct_exp_list)
+)
+print(results_df)
+
+```
+
+
+
+
+
+

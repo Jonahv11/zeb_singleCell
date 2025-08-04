@@ -1,0 +1,130 @@
+---
+title: "multi_contrasts"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(scCustomize)
+library(dplyr)
+library(ggplot2)
+library(viridis)
+```
+
+
+```{r}
+#Set figure outputs
+knitr::opts_chunk$set(dpi=600,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = "/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/figs/tgfb_dotplots_",  dev = c("svglite", "png"))
+```
+
+
+```{r}
+vtp_tgfb_multi <- readRDS("../source_data/vtp_tgfb_multi.rds")
+Idents(vtp_tgfb_multi) <- "cell_line_cond"
+DefaultAssay(vtp_tgfb_multi) <- "RNA"
+```
+
+```{r}# used to look at significance, probably won't be used again
+
+CHLA10_trt <- FindMarkers(vtp_tgfb_multi, ident.1 = "CHLA10_TGFB2", ident.2 = "CHLA10_vehicle", logfc.threshold = 0.001)
+A673_trt <- FindMarkers(vtp_tgfb_multi, ident.1 = "A673_TGFB2", ident.2 = "A673_vehicle", logfc.threshold = 0.001)
+TC71_trt <- FindMarkers(vtp_tgfb_multi, ident.1 = "TC71_TGFB2", ident.2 = "TC71_vehicle", logfc.threshold = 0.001)
+veh_cellline <- FindMarkers(vtp_tgfb_multi, ident.1 = "CHLA10_vehicle", "TC71_vehicle")
+tgfb1_cellline <- FindMarkers(vtp_tgfb_multi, "CHLA10_TGFB1", "TC71_TGFB1")
+```
+
+```{r}
+# DotPlot_scCustom(vtp_tgfb_multi, features = "ZEB1", idents = c("vehicle", "TGFB1", "TGFB2"))
+# DotPlot(vtp_tgfb_multi, features = "ZEB1", )
+```
+
+
+```{r, zeb1_scaled}
+p1 <- DotPlot(vtp_tgfb_multi, features = "ZEB1", idents = c("CHLA10_vehicle", "CHLA10_TGFB1", "CHLA10_TGFB2", "A673_vehicle", "A673_TGFB1", "A673_TGFB2", "TC71_vehicle", "TC71_TGFB1", "TC71_TGFB2"))
+p_data <- p1$data
+identity_levels <- levels(factor(p_data$id))
+p_data_labeled <- p_data %>%
+  mutate(
+    label_text = paste0("Avg expr: ", round(avg.exp, 2),
+                        "\n% expr: ", round(pct.exp, 1), "%")
+  )
+
+
+ggplot(p_data_labeled, aes(x = features.plot, y = id)) +
+  geom_tile(fill = "white",color = "white", linewidth = 0.5) +
+  geom_point(aes(size = pct.exp, color = avg.exp), stroke = 0.5) +
+  geom_text(aes(label = label_text), size = 3, nudge_x = 0.15) +
+  scale_color_gradientn(colors = viridis_inferno_dark_high, limits = c(0,6), breaks = c(0,3,6), name = "Avg expr (log counts)") +
+  scale_size_continuous(range = c(1,9), name = "% Expression", breaks = c(0,20,40), limits = c(0,40)) +
+  # scale_size_area(max_size = 8, name = "expression %") +
+  labs(y = "Treatment" , title = "ZEB1 expression by treatment") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+  )
+
+```
+
+
+```{r, zeb1_sized}
+p1 <- DotPlot(vtp_tgfb_multi, features = "ZEB1", idents = c("CHLA10_vehicle", "CHLA10_TGFB1", "CHLA10_TGFB2", "A673_vehicle", "A673_TGFB1", "A673_TGFB2", "TC71_vehicle", "TC71_TGFB1", "TC71_TGFB2"))
+p_data <- p1$data
+identity_levels <- levels(factor(p_data$id))
+p_data_labeled <- p_data %>%
+  mutate(
+    label_text = paste0("Avg expr: ", round(avg.exp, 2),
+                        "\n% expr: ", round(pct.exp, 1), "%")
+  )
+
+
+ggplot(p_data_labeled, aes(x = features.plot, y = id)) +
+  geom_tile(fill = "white",color = "white", linewidth = 0.5) +
+  geom_point(aes(size = pct.exp, color = avg.exp), stroke = 0.5) +
+  geom_text(aes(label = label_text), size = 3, nudge_x = 0.15) +
+  scale_color_gradientn(colors = viridis_inferno_dark_high, limits = c(0,6), breaks = c(0,3,6), name = "Avg expr (log counts)") +
+  scale_size_continuous(range = c(1,9), name = "% Expression", breaks = c(0,30,60,90), limits = c(0,100)) +
+  # scale_size_area(max_size = 8, name = "expression %") +
+  labs(y = "Treatment" , title = "ZEB1 expression by treatment") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+  )
+
+```
+
+
+```{r, zeb2}
+p1 <- DotPlot(vtp_tgfb_multi, features = "ZEB2", idents = c("CHLA10_vehicle", "CHLA10_TGFB1", "CHLA10_TGFB2", "A673_vehicle", "A673_TGFB1", "A673_TGFB2", "TC71_vehicle", "TC71_TGFB1", "TC71_TGFB2"))
+p_data <- p1$data
+identity_levels <- levels(factor(p_data$id))
+p_data_labeled <- p_data %>%
+  mutate(
+    label_text = paste0("Avg expr: ", round(avg.exp, 2),
+                        "\n% expr: ", round(pct.exp, 1), "%")
+  )
+
+ggplot(p_data_labeled, aes(x = features.plot, y = id)) +
+  geom_tile(fill = "white",color = "white", linewidth = 0.5) +
+  geom_point(aes(size = pct.exp, color = avg.exp), stroke = 0.5) +
+  geom_text(aes(label = label_text), size = 3, nudge_x = 0.15) +
+  scale_color_gradientn(colors = viridis_inferno_dark_high, limits = c(0,6), breaks = c(0,3,6), name = "Avg expr (log counts)") +
+  scale_size_continuous(range = c(1,9), name = "% Expression", breaks = c(0,30,60,90), limits = c(0,100)) +
+  # scale_size_area(max_size = 8, name = "expression %") +
+  labs(y = "Treatment" , title = "ZEB2 expression by treatment") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+  )
+
+ 
+```
+
+
+

@@ -1,0 +1,51 @@
+---
+title: "cov_plots"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+```
+
+
+```{r}
+vtp_tgfb_multi <- readRDS("../source_data/vtp_tgfb_multi.rds")
+Idents(vtp_tgfb_multi) <- "cell_line_cond"
+idents.plot <- c("CHLA10_vehicle", "CHLA10_TGFB1", "CHLA10_VTP+TGFB1", "TC71_vehicle", "TC71_TGFB1", "TC71_VTP+TGFB1")
+vtp_tgfb_multi <- SortIdents(vtp_tgfb_multi)
+```
+
+
+```{r}# looping doesn't work well with coverage plots
+goi <- c("TGFB2", "TGFBR2", "NT5E")
+for (gene in goi){
+  # print(gene)
+  p1 <- CoveragePlot(
+  object = vtp_tgfb_multi,
+  region = gene,
+  features = gene,
+  expression.assay = "RNA",
+  idents = idents.plot,
+  extend.upstream = 500,
+  extend.downstream = 10000
+  )
+  plot(p1)
+}
+  
+
+```
+
+
+```{r}
+CoveragePlot(
+  object = vtp_tgfb_multi,
+  region = "NT5E",
+  features = "NT5E",
+  expression.assay = "RNA",
+  idents = idents.plot,
+  extend.upstream = 500,
+  extend.downstream = 10000
+  )
+
+```

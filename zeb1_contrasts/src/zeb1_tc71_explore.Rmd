@@ -1,0 +1,166 @@
+---
+title: "zeb1_tc71_explore"
+output: html_document
+---
+
+```{r, message=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+library(tibble)
+library(EnhancedVolcano)
+library(pheatmap)
+library(glue)
+```
+
+```{r}
+TC71 <- readRDS("../../working_data/TC71_processed.rds")
+Idents(TC71) <- "condition"
+TC71_T1 <- subset(TC71, idents = "TGFB1")
+TC71_veh <- subset(TC71, idents = "vehicle")
+treatment_response_genes <- read.csv("../../gene_lists/Ewing_TGFB1_response_ACP.txt")
+tfs_of_interest <- read.csv("../../gene_lists/TFs_of_interest.txt")
+```
+
+```{r}
+# dA peaks/genes for tgfb1 treated tc71
+DefaultAssay(TC71_T1) <- "ATAC"
+Idents(TC71_T1) <- 'zeb1_expr'
+tgfb1_zeb1_peaks <- FindMarkers(
+  object = TC71_T1, ident.1 = "ZEB1+", ident.2 = "ZEB1-", test.use = 'wilcox', min.pct = 0.1)
+allpeaks_t1_zeb1_genes <- ClosestFeature(TC71_T1, regions = rownames(tgfb1_zeb1_peaks))
+tgfb1_zeb1_peaks$closest_gene <- allpeaks_t1_zeb1_genes$gene_name
+
+sig_tgfb1_zeb1_peaks <- rownames(tgfb1_zeb1_peaks[tgfb1_zeb1_peaks$p_val < 0.0001, ]) # note pval vs p_adj
+genes_t1_zeb1 <- ClosestFeature(TC71_T1, regions = sig_tgfb1_zeb1_peaks)
+
+tgfb1_zeb1_motif_accessibility <- FindMotifs(TC71_T1, features = sig_tgfb1_zeb1_peaks)
+
+print(glue(length(sig_tgfb1_zeb1_peaks), " 'significant' peaks for tgfb1 TC71 ZEB1 contrast"))
+# write.csv(tgfb1_zeb1_peaks, "../results/TC71_T1_ZEB1_dA.csv")
+```
+
+```{r}
+# dA peaks/genes for vehicle treated tc71
+DefaultAssay(TC71_veh) <- "ATAC"
+Idents(TC71_veh) <- 'zeb1_expr'
+veh_zeb1_peaks <- FindMarkers(
+  object = TC71_veh, ident.1 = "ZEB1+", ident.2 = "ZEB1-", test.use = 'wilcox', min.pct = 0.1)
+allpeaks_veh_zeb1_genes <- ClosestFeature(TC71_veh, regions = rownames(veh_zeb1_peaks))
+veh_zeb1_peaks$closest_gene <- allpeaks_veh_zeb1_genes$gene_name
+
+sig_veh_zeb1_peaks <- rownames(veh_zeb1_peaks[veh_zeb1_peaks$p_val < 0.0001, ]) # note pval vs p_adj
+genes_veh_zeb1 <- ClosestFeature(TC71_veh, regions = sig_veh_zeb1_peaks)
+
+veh_zeb1_motif_accessibility <- FindMotifs(TC71_veh, features = sig_veh_zeb1_peaks)
+
+print(glue(length(sig_veh_zeb1_peaks), " 'significant' peaks for vehicle TC71 ZEB1 contrast"))
+# write.csv(veh_zeb1_peaks, "../results/TC71_veh_ZEB1_dA.csv")
+```
+
+```{r}
+# volcano plots -- motif enrichment
+EnhancedVolcano(tgfb1_zeb1_motif_accessibility, lab = tgfb1_zeb1_motif_accessibility$motif.name, x = "fold.enrichment", y = "p.adjust", selectLab = tfs_of_interest[,1], drawConnectors = T, title = "Motif accessibility in tgfb1 treated ZEB1+/- DA peaks")
+
+EnhancedVolcano(veh_zeb1_motif_accessibility, lab = veh_zeb1_motif_accessibility$motif.name, x = "fold.enrichment", y = "p.adjust", selectLab = tfs_of_interest[,1], drawConnectors = T, title = "Motif accessibility in vehicle treated ZEB1+/- DA peaks")
+
+```
+
+
+```{r}
+# DE for tgfb1 treated tc71
+DefaultAssay(TC71_T1) <- "RNA"
+de_t1 <- FindMarkers(
+  object = TC71_T1, ident.1 = "ZEB1+", ident.2 = "ZEB1-", test.use = 'wilcox', min.pct = 0.1)
+de_t1 <- de_t1[-1, ]
+sig_de_t1 <- rownames(de_t1[de_t1$p_val_adj < 0.05, ])
+
+# DE for vehicle treated tc71
+DefaultAssay(TC71_veh) <- "RNA"
+de_veh <- FindMarkers(
+  object = TC71_veh, ident.1 = "ZEB1+", ident.2 = "ZEB1-", test.use = 'wilcox', min.pct = 0.1)
+de_veh <- de_veh[-1, ]
+sig_de_veh <- rownames(de_veh[de_veh$p_val_adj < 0.05, ])
+```
+
+
+```{r}
+# intersect "significant" de and da genes within treatments
+intersect_t1 <- intersect(genes_t1_zeb1$gene_name, rownames(sig_de_t1))
+intersect_veh <- intersect(genes_veh_zeb1$gene_name, rownames(sig_de_veh))
+```
+
+```{r}
+t2g_hallmarks <- msigdbr(species = "Homo sapiens", collection ="H") %>%
+  dplyr::select(gs_name, gene_symbol)
+t2g_reactome <- msigdbr(species = "Homo sapiens", collection ="C2", subcollection = "CP:REACTOME") %>%
+  dplyr::select(gs_name, gene_symbol)
+
+GOALL <- enrichGO(sig_de_t1, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+hallmarks <- enricher(sig_de_t1, TERM2GENE = t2g_hallmarks)
+react <- enricher(sig_de_t1, TERM2GENE = t2g_reactome)
+```
+
+```{r}
+dotplot(GOALL, title = "tgfb1 treated de genes")
+dotplot(hallmarks, title = "tgfb1 treated de genes")
+dotplot(react, title = "tgfb1 treated de genes")
+```
+
+```{r}
+GOALL <- enrichGO(sig_de_veh, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+hallmarks <- enricher(sig_de_veh, TERM2GENE = t2g_hallmarks)
+react <- enricher(sig_de_veh, TERM2GENE = t2g_reactome)
+
+```
+
+```{r}
+dotplot(GOALL, title = "vehicle treated de genes")
+dotplot(hallmarks, title = "vehicle treated de genes")
+dotplot(react, title = "vehicle treated de genes")
+```
+
+
+```{r}
+EnhancedVolcano(de_t1, x = 'avg_log2FC', y = 'p_val_adj', lab = rownames(de_t1), FCcutoff = 0.25, title = "DE genes tgfb1 treated tc71")
+
+EnhancedVolcano(de_veh, x = 'avg_log2FC', y = 'p_val_adj', lab = rownames(de_veh), FCcutoff = 0.25, title = "DE genes vehicle treated tc71")
+
+```
+
+
+```{r}
+# re-running the treatment contrast to contextualize ZEB1 contrast results
+DefaultAssay(TC71) <- "ATAC"
+Idents(TC71) <- "condition"
+condition_peaks <- FindMarkers(TC71, ident.1 = "TGFB1", ident.2 = "vehicle", test.use = 'wilcox', min.pct = 0.1)
+allpeaks_condition <- ClosestFeature(TC71, regions = rownames(condition_peaks))
+condition_peaks$closest_gene <- allpeaks_condition$gene_name
+
+print(glue(nrow(condition_peaks[condition_peaks$p_val < 0.0001, ]), " 'significant' peaks for TC71 treatment contrast"))
+# write.csv(condition_peaks, "../results/TC71_treatments_dA.csv")
+
+```
+
+

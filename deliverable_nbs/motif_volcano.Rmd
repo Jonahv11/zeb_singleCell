@@ -1,0 +1,56 @@
+---
+title: "motif_volcano"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(EnhancedVolcano)
+library(dplyr)
+```
+
+
+```{r}
+#Set figure outputs
+knitr::opts_chunk$set(dpi=600,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = "/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/figs/chla10_motif_enrich_",  dev = c("svglite", "png"))
+```
+
+
+```{r}
+# read in data
+CHLA10 <- readRDS("../working_data/CHLA10_processed.rds")
+Idents(CHLA10) <- "cell_line_cond"
+DefaultAssay(CHLA10) <- "ATAC"
+```
+
+
+```{r}
+# calculate motif enrichment
+marker_ranges <- FindMarkers(CHLA10, ident.1 = "CHLA10_TGFB1", ident.2 = "CHLA10_vehicle")
+significant_ranges <- rownames(marker_ranges[marker_ranges$avg_log2FC > 0 & marker_ranges$p_val_adj < 0.05, ])
+motif_enrichment_sig_ranges <- FindMotifs(CHLA10, features = significant_ranges)
+```
+
+
+```{r}
+# fix motif names
+motif_enrichment_sig_ranges$motif.name[motif_enrichment_sig_ranges$motif.name == "Smad4"] <- "SMAD4"
+
+```
+
+
+```{r, volcanoplot}
+EnhancedVolcano(motif_enrichment_sig_ranges, lab=motif_enrichment_sig_ranges$motif.name, x="fold.enrichment", y="p.adjust",
+                xlab = "Fold Enrichment", 
+                selectLab = c("ZEB1", "SMAD3", "SMAD4", "JUN", "RREB1", "FOSL2", "TEAD1", "TEAD2", "TEAD3", "TEAD4", "EWSR1-FLI1", "ETS1", "LEF1", "JUND", "JUNB", "SMAD5"), 
+                pCutoff = 1e-2, FCcutoff=1.5, pointSize=3, drawConnectors=TRUE, labSize=5,
+                col=c("lightgray", "darkgray", "darkgray", "red"), labCol="black", labFace = "bold",
+                boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf) + coord_flip() + 
+  ggtitle("TF motif enrichment in TGFB1 induced differentially \n accessible peaks - CHLA10")
+
+
+```

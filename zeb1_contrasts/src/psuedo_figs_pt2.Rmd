@@ -1,0 +1,166 @@
+---
+title: "psuedo_figs_pt2"
+output: html_document
+---
+
+```{r, message=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+library(tibble)
+library(EnhancedVolcano)
+library(pheatmap)
+```
+
+
+```{r}
+# multiome_og <- readRDS("../../../VTP_SC_seq/ews_tgfb_seurat.rds")
+# Idents(multiome_og) <- "condition"
+# tgfb_subset <- subset(multiome_og, idents = c("TGFB1", "TGFB2", "vehicle"))
+# saveRDS(tgfb_subset, "../working_data/tgfb_subset.rds")
+
+tgfb_subset <- readRDS("../working_data/tgfb_subset.rds")
+DefaultAssay(tgfb_subset) <- "RNA"
+# Idents(CHLA10) <- "zeb1_expr"
+# zeb_hybrid<- subset(x = tgfb_subset, subset = zeb1_expr  == "ZEB1+" & zeb2_expr == "ZEB2+", slot='data')
+```
+
+```{r}
+# subset for zeb expression
+zeb2_expr <- GetAssayData(tgfb_subset, slot = "data")["ZEB2", ]
+ZEB2_positive <- subset(tgfb_subset, cells = names(zeb2_expr[zeb2_expr > 0]))
+ZEB2_negative <- subset(tgfb_subset, cells = names(zeb2_expr[zeb2_expr <= 0]))
+
+tgfb_subset <- SetIdent(tgfb_subset, cells=Cells(ZEB2_positive), value='ZEB2+')
+tgfb_subset <- SetIdent(tgfb_subset, cells=Cells(ZEB2_negative), value='ZEB2-')
+tgfb_subset$zeb2_expr <- Idents(tgfb_subset)
+
+## ZEB1 subsetting
+zeb1_expr <- GetAssayData(tgfb_subset, slot = "data")["ZEB1", ]
+ZEB1_positive <- subset(tgfb_subset, cells = names(zeb1_expr[zeb1_expr > 0]))
+ZEB1_negative <- subset(tgfb_subset, cells = names(zeb1_expr[zeb1_expr <= 0]))
+
+tgfb_subset <- SetIdent(tgfb_subset, cells=Cells(ZEB1_positive), value='ZEB1+')
+tgfb_subset <- SetIdent(tgfb_subset, cells=Cells(ZEB1_negative), value='ZEB1-')
+tgfb_subset$zeb1_expr <- Idents(tgfb_subset)
+rm(ZEB1_negative, ZEB1_positive, ZEB2_negative, ZEB2_positive)
+```
+
+
+```{r}
+# psuedobulk data first, then make a heatmap
+grouped <- AggregateExpression(tgfb_subset, group.by = "cell_line_cond", assays = "RNA") %>% as.data.frame()
+names(grouped) <- c("A673 T1", "A673 T2", "A673 veh", "CHLA10 T1", "CHLA10 T2", "CHLA10 veh", "TC71 T1", "TC71 T2", "TC71 veh")
+
+goi <- c("ZEB1", "ZEB2", "TGFBI", "COL1A1", "TNC", "NT5E")
+
+A673_g <- grouped[ ,c("A673 veh", "A673 T1", "A673 T2")]
+CHLA10_g <- grouped[ ,c("CHLA10 veh", "CHLA10 T1", "CHLA10 T2")]
+TC71_g <- grouped[ ,c("TC71 veh", "TC71 T1", "TC71 T2")]
+
+pheatmap(grouped[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Pseudobulked heatmap", scale="row", color = inferno(100), border_color = NA
+         # , display_numbers = T, number_color = "red"
+         )
+DotPlot_scCustom(tgfb_subset, features = goi, group.by = "cell_line_cond", colors_use = inferno(100),
+                 dot.scale = 14, scale.by = "size") + ggtitle("Multiome data psuedobulked by Seurat")
+```
+
+
+```{r}
+# pheatmap(A673_g[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+#          cluster_cols=FALSE, main="A673 heatmap", scale="row", color = inferno(100), border_color = NA
+#          )
+# pheatmap(CHLA10_g[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+#          cluster_cols=FALSE, main="CHLA10 heatmap", scale="row", color = inferno(100), border_color = NA
+#          )
+# pheatmap(TC71_g[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+#          cluster_cols=FALSE, main="TC71 heatmap", scale="row", color = inferno(100), border_color = NA
+#          )
+```
+
+
+```{r}
+# scale data
+data_to_scale <- A673_g[goi, ] %>% as.matrix()
+log2_fc_data <- matrix(NA, nrow = nrow(data_to_scale), ncol = ncol(data_to_scale))
+rownames(log2_fc_data) <- rownames(data_to_scale)
+colnames(log2_fc_data) <- colnames(data_to_scale)
+pseudocount <- 1
+
+for (i in 1:nrow(data_to_scale)) {
+  baseline_value_with_pseudocount <- data_to_scale[i, 1] + pseudocount
+  log2_fc_data[i, ] <- log2((data_to_scale[i, ] + pseudocount) / baseline_value_with_pseudocount)}
+
+pheatmap(log2_fc_data, cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="A673 veh scaled", scale="none", color = inferno(100), border_color = NA
+         # , display_numbers = T, number_color = "red"
+         )
+pheatmap(A673_g[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="A673 row scaled", scale="row", color = inferno(100), border_color = NA
+         )
+```
+
+```{r}
+# scale data
+data_to_scale <- CHLA10_g[goi, ] %>% as.matrix()
+log2_fc_data <- matrix(NA, nrow = nrow(data_to_scale), ncol = ncol(data_to_scale))
+rownames(log2_fc_data) <- rownames(data_to_scale)
+colnames(log2_fc_data) <- colnames(data_to_scale)
+pseudocount <- 1
+
+for (i in 1:nrow(data_to_scale)) {
+  baseline_value_with_pseudocount <- data_to_scale[i, 1] + pseudocount
+  log2_fc_data[i, ] <- log2((data_to_scale[i, ] + pseudocount) / baseline_value_with_pseudocount)}
+
+pheatmap(log2_fc_data, cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="CHLA10 veh scaled", scale="none", color = inferno(100), border_color = NA
+         # , display_numbers = T, number_color = "red"
+         )
+pheatmap(CHLA10_g[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="CHLA10 row scaled", scale="row", color = inferno(100), border_color = NA
+         )
+```
+
+```{r}
+# scale data
+data_to_scale <- TC71_g[goi, ] %>% as.matrix()
+log2_fc_data <- matrix(NA, nrow = nrow(data_to_scale), ncol = ncol(data_to_scale))
+rownames(log2_fc_data) <- rownames(data_to_scale)
+colnames(log2_fc_data) <- colnames(data_to_scale)
+pseudocount <- 1
+
+for (i in 1:nrow(data_to_scale)) {
+  baseline_value_with_pseudocount <- data_to_scale[i, 1] + pseudocount
+  log2_fc_data[i, ] <- log2((data_to_scale[i, ] + pseudocount) / baseline_value_with_pseudocount)}
+
+pheatmap(log2_fc_data, cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="TC71 veh scaled", scale="none", color = inferno(100), border_color = NA
+         # , display_numbers = T, number_color = "red"
+         )
+
+pheatmap(TC71_g[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="TC71 row scaled", scale="row", color = inferno(100), border_color = NA
+         )
+```

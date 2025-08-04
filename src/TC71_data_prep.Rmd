@@ -1,0 +1,114 @@
+---
+title: "TC71_data_prep"
+output: html_document
+---
+
+```{r, message=F, echo=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+
+```
+
+```{r}
+# read in data
+TC71 <- readRDS(file = "../working_data/tc71_tgfb_seurat.rds")
+Idents(TC71) <- "condition"
+table(Idents(TC71))
+```
+
+```{r}
+# first look at data
+treatpal <- c("aquamarine2", "orange", "purple1")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "pca")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "umap")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "lsi")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "umap.atac")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "wnn.umap")
+# cells kept their old clusters, let's try changing that
+```
+
+```{r}
+# re-sort RNA data
+# TC71 <- NormalizeData(object = TC71)
+TC71 <- FindVariableFeatures(object = TC71)
+TC71 <- ScaleData(object = TC71)
+TC71 <- RunPCA(object = TC71)
+ElbowPlot(TC71, ndims = 50) # check this out tomorrow to check dims
+TC71 <- FindNeighbors(object = TC71, dims = 1:30)
+TC71 <- FindClusters(object = TC71)
+TC71 <- RunUMAP(object = TC71, dims = 1:30)
+```
+
+```{r}
+# re-sort ATAC data
+DefaultAssay(TC71) <- "ATAC"
+TC71 <- RunTFIDF(TC71)
+TC71 <- FindTopFeatures(TC71, min.cutoff = 'q0')
+TC71 <- RunSVD(TC71)
+ElbowPlot(TC71, reduction = "lsi", ndims = 50)
+TC71 <- RunUMAP(TC71, reduction = 'lsi', dims = 2:20, reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+```
+
+```{r}
+# cluster based on both RNA and ATAC data
+TC71 <- FindMultiModalNeighbors(TC71, reduction.list = list("pca", "lsi"), dims.list = list(1:30, 2:20))
+TC71 <- RunUMAP(TC71, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+TC71 <- FindClusters(TC71, graph.name = "wsnn", algorithm = 3, verbose = FALSE)
+```
+
+```{r}
+treatpal <- c("aquamarine2", "orange", "purple1")
+Idents(TC71) <- "condition"
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "pca")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "umap")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "lsi")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "umap.atac")
+DimPlot_scCustom(TC71, colors_use = treatpal, label = F, reduction = "wnn.umap")
+Cluster_Highlight_Plot(TC71, c("vehicle", "TGFB1", "TGFB2"), highlight_color = c("red","blue1","blue4"), reduction = "wnn.umap")
+
+```
+
+
+```{r}
+cc.genes <- Seurat::cc.genes.updated.2019
+DefaultAssay(TC71) <- "RNA"
+
+# Score cell cycle for RNA assay
+TC71 <- CellCycleScoring(
+  object = TC71,
+  s.features = cc.genes$s.genes,
+  g2m.features = cc.genes$g2m.genes,
+  set.ident = TRUE  # Optional: sets cell identity to phase
+)
+
+DimPlot(TC71, reduction = "wnn.umap", group.by = "Phase", pt.size = 0.5) + ggtitle("Cell Cycle Phase on WNN UMAP")
+
+```
+
+
+```{r}
+# saveRDS(TC71, "../working_data/TC71_reclustered.rds")
+
+```

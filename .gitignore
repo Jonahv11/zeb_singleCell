@@ -1,0 +1,23 @@
+# ds_store
+*.DS_Store
+
+# directories
+results/
+source_data/
+working_data/
+zeb1_contrasts/results/
+zeb1_contrasts/working_data/
+cell_line_contrasts/results/
+cell_line_contrasts/working_data/
+figs/
+
+# specific files
+gene_lists/cisBP_human_pfms_2021.rds
+data_nbs/session2_info.rds
+data_nbs/session2_info1.rds
+data_nbs/session_info_local.txt
+data_nbs/session_info_local_marc.txt
+
+
+# html files
+*html

@@ -1,0 +1,219 @@
+---
+title: "nine_lines"
+output: html_document
+---
+
+```{r, message=F, echo=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+```
+
+```{r}
+ninelines <- readRDS("../working_data/2022-6-3_aa_genename_cite_9.rds")
+table(Idents(ninelines))
+riggi_up <- read.delim(file="../gene_lists/RIGGI_UP.txt", header=FALSE)
+riggi_dn <- read.delim(file="../gene_lists/RIGGI_DN.txt", header=FALSE)
+```
+
+## More groupings
+
+```{r}
+# adding metadata and idents based on riggi gene lists
+
+ninelines <- AddModuleScore(ninelines, features=riggi_up, name="riggi_up")
+ninelines <- AddModuleScore(ninelines, features=riggi_dn, name="riggi_dn")
+
+# breaking riggi distributions
+rup_cutoff <- quantile(ninelines$riggi_up1, probs=0.5)
+rup_cutoff <- unname(rup_cutoff)
+
+rdn_cutoff <- quantile(ninelines$riggi_dn1, probs=0.5)
+rdn_cutoff <- unname(rdn_cutoff)
+```
+
+```{r}
+# adding riggi idents
+
+riggi_up_hi <- subset(x = ninelines, subset = riggi_up1 > rup_cutoff, slot='data')
+riggi_up_lo <- subset(x = ninelines, subset = riggi_up1 > rup_cutoff, slot='data', invert=TRUE)
+ninelines <- SetIdent(ninelines, cells=Cells(riggi_up_hi), value='riggi_up_hi')
+ninelines <- SetIdent(ninelines, cells=Cells(riggi_up_lo), value='riggi_up_lo')
+ninelines$riggi_up_identity <- Idents(ninelines)
+remove(riggi_up_hi)
+remove(riggi_up_lo)
+
+riggi_dn_hi <- subset(x = ninelines, subset = riggi_dn1 > rdn_cutoff, slot='data')
+riggi_dn_lo <- subset(x = ninelines, subset = riggi_dn1 > rdn_cutoff, slot='data', invert=TRUE)
+ninelines <- SetIdent(ninelines, cells=Cells(riggi_dn_hi), value='riggi_dn_hi')
+ninelines <- SetIdent(ninelines, cells=Cells(riggi_dn_lo), value='riggi_dn_lo')
+ninelines$riggi_dn_identity <- Idents(ninelines)
+remove(riggi_dn_hi)
+remove(riggi_dn_lo)
+```
+
+```{r}
+# further sorting cells by riggi levels
+hybrid<- subset(x = ninelines, subset = riggi_up_identity  == "riggi_up_hi" & riggi_dn_identity == "riggi_dn_hi", slot='data')
+true_low<- subset(x = ninelines, subset = riggi_up_identity  == "riggi_up_lo" & riggi_dn_identity == "riggi_dn_hi", slot='data')
+true_hi<- subset(x = ninelines, subset = riggi_up_identity  == "riggi_up_hi" & riggi_dn_identity == "riggi_dn_lo", slot='data')
+low_hybrid<- subset(x = ninelines, subset = riggi_up_identity  == "riggi_up_lo" & riggi_dn_identity == "riggi_dn_lo", slot='data')
+
+ninelines <- SetIdent(ninelines, cells=Cells(hybrid), value='hybrid')
+ninelines <- SetIdent(ninelines, cells=Cells(true_low), value='true_low')
+ninelines <- SetIdent(ninelines, cells=Cells(true_hi), value='true_high')
+ninelines <- SetIdent(ninelines, cells=Cells(low_hybrid), value='low_hybrid')
+Idents(ninelines) <- factor(Idents(ninelines), levels = c("low_hybrid", "true_low", "true_high", "hybrid"))
+
+ninelines$ef_state_identity <- Idents(ninelines)
+
+remove(hybrid)
+remove(true_low)
+remove(true_hi)
+remove(low_hybrid)
+
+```
+
+```{r}
+zeb2_expr <- GetAssayData(ninelines, slot = "data")["ZEB2", ]
+zeb2_bot_30 <- quantile(zeb2_expr, 0.30)
+zeb2_top_30 <- quantile(zeb2_expr, 0.70)
+zeb2_bot_30 <- unname(zeb2_bot_30)
+zeb2_top_30 <- unname(zeb2_top_30)
+```
+
+```{r}
+hi_ZEB2 <- subset(ninelines, cells = names(zeb2_expr[zeb2_expr > zeb2_top_30]))
+low_ZEB2 <- subset(ninelines, cells = names(zeb2_expr[zeb2_expr < zeb2_bot_30]))
+
+mid_zeb2_cells <- names(zeb2_expr[zeb2_expr >= zeb2_bot_30 & zeb2_expr <= zeb2_top_30])
+mid_ZEB2 <- subset(ninelines, cells = mid_zeb2_cells)
+
+# this code also sets the active identity of the cells to these categories
+ninelines <- SetIdent(ninelines, cells=Cells(hi_ZEB2), value='Hi_ZEB2')
+ninelines <- SetIdent(ninelines, cells=Cells(mid_ZEB2), value='Mid_ZEB2')
+ninelines <- SetIdent(ninelines, cells=Cells(low_ZEB2), value='Low_ZEB2')
+
+# make sure they are in an appropriate order before saving them to object
+Idents(ninelines) <- factor(Idents(ninelines), levels = c("Low_ZEB2", "Mid_ZEB2", "Hi_ZEB2"))
+ninelines$zeb2_lvl <- Idents(ninelines)
+
+remove(hi_ZEB2)
+remove(mid_ZEB2)
+remove(low_ZEB2)
+```
+
+```{r}
+DimPlot_scCustom(ninelines, label = F, reduction = "apca")
+DimPlot_scCustom(ninelines, label = F, reduction = "pca")
+DimPlot_scCustom(ninelines, label = F, reduction = "adt.umap")
+DimPlot_scCustom(ninelines, label = F, reduction = "SCT_UMAP")
+```
+
+
+
+```{r}
+# subsetting object with the cells I want
+Idents(ninelines) <- "CellLine"
+target_lines <- subset(ninelines, idents = c("TC32", "CHLA10")) # beth's favorite lines
+Idents(target_lines) <- "Phase"
+s1_obj <- subset(target_lines, idents = "S")
+
+```
+
+
+
+```{r}
+
+DotPlot(
+  object = target_lines,
+  features = c("riggi_up1", "riggi_dn1"),
+  group.by = "CellLine"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 riggi genesets by treatment")
+
+DotPlot(
+  object = s1_obj,
+  features = c("riggi_up1", "riggi_dn1"),
+  group.by = "CellLine"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 S phase, riggi genesets by treatment")
+
+DotPlot(
+  object = target_lines,
+  features = c("riggi_up1", "riggi_dn1"),
+  group.by = "zeb2_lvl"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 riggi genesets by zeb2")
+
+DotPlot(
+  object = s1_obj,
+  features = c("riggi_up1", "riggi_dn1"),
+  group.by = "zeb2_lvl"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 s phase, riggi genesets by zeb2")
+
+DotPlot(
+  object = target_lines,
+  features = c("FOSL2", "JUND", "ZEB1", "TGFBI"),
+  group.by = "ef_state_identity"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 GOI by riggi geneset expression levels")
+
+DotPlot(
+  object = s1_obj,
+  features = c("FOSL2", "JUND", "ZEB1", "TGFBI"),
+  group.by = "ef_state_identity"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 s phase, GOI by riggi geneset expression levels")
+
+DotPlot(
+  object = target_lines,
+  features = c("FOSL2", "JUND", "ZEB1", "TGFBI"),
+  group.by = "zeb2_lvl"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 GOI by ZEB2 expression groups")
+
+DotPlot(
+  object = s1_obj,
+  features = c("FOSL2", "JUND", "ZEB1", "TGFBI"),
+  group.by = "zeb2_lvl"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(3, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CHLA10 + TC32 s phase, GOI by ZEB2 expression groups")
+
+```

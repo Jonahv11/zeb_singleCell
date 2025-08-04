@@ -1,0 +1,88 @@
+---
+title: "chla10_zeb1_explore"
+output: html_document
+---
+
+```{r, message=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+library(tibble)
+library(EnhancedVolcano)
+library(pheatmap)
+```
+
+
+```{r}
+# multiome_og <- readRDS("../../../VTP_SC_seq/ews_tgfb_seurat.rds")
+# Idents(multiome_og) <- "cell_line_cond"
+# ch_a6_t1_veh <- subset(multiome_og, idents = c("CHLA10_TGFB1", "CHLA10_vehicle", "A673_TGFB1", "A673_vehicle"))
+# saveRDS(ch_a6_t1_veh, "../working_data/ch_a6_t1_veh.rds")
+
+ch_a6_t1_veh <- readRDS("../working_data/ch_a6_t1_veh.rds")
+DefaultAssay(ch_a6_t1_veh) <- "RNA"
+# Idents(CHLA10) <- "zeb1_expr"
+# zeb_hybrid<- subset(x = ch_a6_t1_veh, subset = zeb1_expr  == "ZEB1+" & zeb2_expr == "ZEB2+", slot='data')
+```
+
+```{r}
+# subset for zeb expression
+zeb2_expr <- GetAssayData(ch_a6_t1_veh, slot = "data")["ZEB2", ]
+ZEB2_positive <- subset(ch_a6_t1_veh, cells = names(zeb2_expr[zeb2_expr > 0]))
+ZEB2_negative <- subset(ch_a6_t1_veh, cells = names(zeb2_expr[zeb2_expr <= 0]))
+
+ch_a6_t1_veh <- SetIdent(ch_a6_t1_veh, cells=Cells(ZEB2_positive), value='ZEB2+')
+ch_a6_t1_veh <- SetIdent(ch_a6_t1_veh, cells=Cells(ZEB2_negative), value='ZEB2-')
+ch_a6_t1_veh$zeb2_expr <- Idents(ch_a6_t1_veh)
+
+## ZEB1 subsetting
+zeb1_expr <- GetAssayData(ch_a6_t1_veh, slot = "data")["ZEB1", ]
+ZEB1_positive <- subset(ch_a6_t1_veh, cells = names(zeb1_expr[zeb1_expr > 0]))
+ZEB1_negative <- subset(ch_a6_t1_veh, cells = names(zeb1_expr[zeb1_expr <= 0]))
+
+ch_a6_t1_veh <- SetIdent(ch_a6_t1_veh, cells=Cells(ZEB1_positive), value='ZEB1+')
+ch_a6_t1_veh <- SetIdent(ch_a6_t1_veh, cells=Cells(ZEB1_negative), value='ZEB1-')
+ch_a6_t1_veh$zeb1_expr <- Idents(ch_a6_t1_veh)
+rm(ZEB1_negative, ZEB1_positive, ZEB2_negative, ZEB2_positive)
+```
+
+
+```{r}
+# psuedobulk data first, then make a heatmap
+grouped <- AggregateExpression(ch_a6_t1_veh, group.by = "cell_line_cond", assays = "RNA") %>% as.data.frame()
+names(grouped) <- c("A673 T1", "A673 veh", "CHLA10 T1", "CHLA10 veh")
+
+goi <- c("ZEB1", "ZEB2", "TGFBI", "COL1A1", "TNC", "NT5E")
+
+pheatmap(grouped[goi,], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Pseudobulked heatmap", scale="row", color = inferno(100), border_color = NA
+         # , display_numbers = T, number_color = "red"
+         )
+DotPlot_scCustom(ch_a6_t1_veh, features = goi, group.by = "cell_line_cond", colors_use = inferno(100),
+                 dot.scale = 14, scale.by = "size") + ggtitle("Multiome data psuedobulked by Seurat")
+```
+
+
+
+

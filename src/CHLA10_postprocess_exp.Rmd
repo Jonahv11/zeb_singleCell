@@ -1,0 +1,125 @@
+---
+title: "CHLA10_postprocess_exp"
+output: html_document
+---
+
+```{r, message=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+library(tibble)
+```
+
+```{r}
+CHLA10 <- readRDS("../working_data/CHLA10_processed.rds")
+CHLA10_enr_mtf <- read.csv("../results/CHLA10_enriched_motifs.csv")
+CHLA10_link_ranges <- Links(CHLA10)
+CHLA10_linked_genes <- tibble(gene = CHLA10_link_ranges$gene, peak=CHLA10_link_ranges$peak, pval=CHLA10_link_ranges$pvalue)
+tgfb1_response_genes <- read.csv("../gene_lists/Ewing_TGFB1_response_ACP.txt")
+target_tfs <- read.csv("../gene_lists/TFs_of_interest.txt", header = F) %>% pull(V1)
+```
+
+
+```{r}
+DefaultAssay(CHLA10) <- "chromvar"
+FeaturePlot_scCustom(CHLA10, features = "MA0103.3", min.cutoff = 'q10', max.cutoff = 'q90', pt.size = 0.1, reduction = "wnn.umap") + ggtitle("ZEB1 motif actvitiy CHLA10") # ZEB1
+FeaturePlot_scCustom(CHLA10, features = "MA1153.1", min.cutoff = 'q10', max.cutoff = 'q90', pt.size = 0.1, reduction = "wnn.umap") + ggtitle("Most enriched motif in CHLA10 DA peaks -- SMAD4") # SMAD4, top hit for enrichment
+
+```
+
+
+```{r}
+# identify DA motifs
+DefaultAssay(CHLA10) <- "chromvar"
+CHLA10_da_motifs <- FindMarkers(
+  object = CHLA10,
+  ident.1 = 'TGFB1',
+  ident.2 = 'vehicle',
+  only.pos = F,
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+)
+# add gene name
+CHLA10_da_motifs$motif <- rownames(CHLA10_da_motifs)
+CHLA10_da_motifs <- merge(
+  CHLA10_da_motifs,
+  CHLA10_enr_mtf[, c("motif", "motif.name")],
+  by = "motif",
+  all.x = TRUE)
+CHLA10_da_motifs <- arrange(CHLA10_da_motifs, p_val_adj)
+```
+
+```{r}
+MotifPlot(
+  object = CHLA10,
+  motifs = head(CHLA10_da_motifs$motif, 20),
+  assay = 'ATAC'
+) + ggtitle("CHLA10 top differentially active motifs TGFB1 vs veh")
+
+```
+
+
+```{r}
+DefaultAssay(CHLA10) <- "RNA"
+CHLA10 <- AddModuleScore(CHLA10, features=tgfb1_response_genes, name="tgfb_response")
+
+FeaturePlot_scCustom(CHLA10, features="tgfb_response1", reduction = "wnn.umap") + ggtitle("CHLA10 tgfb1 response")
+# add dimplot or feature plot for just zeb1 and zeb2
+```
+
+
+```{r}
+# checking target TFs for motif enrichment
+target_tfs[5] <- "Smad4"
+
+# are the TF motifs differentially accessible?
+target_accessible <- CHLA10_da_motifs %>%
+  dplyr::filter(motif.name %in% target_tfs) %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::mutate(order = match(motif.name, target_tfs)) %>%
+  dplyr::arrange(order) %>%
+  dplyr::select(motif.name, p_val_adj)
+
+# are the TF motifs enriched in differentially accessible peaks?
+target_enrich <- CHLA10_enr_mtf %>%
+  dplyr::filter(motif.name %in% target_tfs) %>%
+  dplyr::filter(p.adjust < 0.05) %>%
+  dplyr::mutate(order = match(motif.name, target_tfs)) %>%
+  dplyr::arrange(order) %>%
+  dplyr::select(motif.name, p.adjust)
+
+# are the TF expressions and accessibilities correlated?
+target_linked <- CHLA10_linked_genes %>%
+  dplyr::mutate(order = match(gene, target_tfs)) %>%
+  dplyr::arrange(order) %>% dplyr::select(-order) %>%
+  dplyr::filter(gene %in% target_tfs)
+
+print("Target TFs DA via ChromVAR, CHLA10")
+print(target_accessible)
+print("Target TFs enriched in DA peaks, CHLA10")
+print(target_enrich)
+print("Target TFs correlating expression and accessibility, CHLA10")
+print(as.data.frame(target_linked))
+
+```

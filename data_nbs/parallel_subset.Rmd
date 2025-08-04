@@ -1,0 +1,72 @@
+---
+title: "parallel_subset"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(BiocParallel)
+library(dplyr)
+library(BSgenome.Hsapiens.UCSC.hg38)
+```
+
+
+```{r}
+# CHLA10 <- readRDS("../working_data/CHLA10_processed.rds")
+# subset <- subset(CHLA10, CHLA10$zeb1_expr == "ZEB1+" & Idents(CHLA10) == "vehicle")
+# saveRDS(subset, "../working_data/micro_set.rds")
+subset <- readRDS("../working_data/micro_set.rds")
+```
+
+```{r}
+library(sessioninfo)
+
+# Load the session info objects from the saved files
+session1_info <- sessioninfo::session_info()
+session2_info <- readRDS("session2_info 1.rds")
+
+# Compare them
+session_diff(old = session1_info, new = session2_info)
+ 
+
+```
+
+
+```{r}
+register(SerialParam())
+system.time(subset <- RunChromVAR(subset, genome = BSgenome.Hsapiens.UCSC.hg38, new.assay.name = "cv2"))
+```
+
+```{r}
+register(MulticoreParam(workers = 2))
+system.time(subset <- RunChromVAR(subset, genome = BSgenome.Hsapiens.UCSC.hg38, new.assay.name = "cv3"))
+```
+
+```{r}
+register(MulticoreParam(workers = 3))
+system.time(subset <- RunChromVAR(subset, genome = BSgenome.Hsapiens.UCSC.hg38, new.assay.name = "cv4"))
+```
+
+
+```{r}
+register(MulticoreParam(workers = 4))
+system.time(subset <- RunChromVAR(subset, genome = BSgenome.Hsapiens.UCSC.hg38, new.assay.name = "cv5"))
+```
+
+
+```{r}
+register(MulticoreParam(workers = 8))
+system.time(subset <- RunChromVAR(subset, genome = BSgenome.Hsapiens.UCSC.hg38, new.assay.name = "cv6"))
+```
+
+
+```{r}
+library(chromVAR)
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(motifmatchr)
+
+
+```
+
+

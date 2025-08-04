@@ -1,0 +1,146 @@
+---
+title: "ninelines_zeb_umaps"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(scCustomize)
+library(viridis)
+library(ggplot2)
+library(ggrepel)
+library(knitr)
+```
+
+
+```{r}
+#Set figure outputs
+knitr::opts_chunk$set(dpi=600,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = "/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/figs/grant_umaps_",  dev = c("svglite", "png"))
+```
+
+
+```{r}
+ninelines <- readRDS("../../seurat_objects/2022-6-3_aa_genename_cite_9.rds")
+Idents(ninelines) <- "CellLine"
+fix.sc <- scale_color_gradientn(colors = viridis_inferno_dark_high,  limits = c(0, 3))
+```
+
+
+## Umap figs
+
+```{r, zeb1_labeled}
+p1 <- scCustomize::FeaturePlot_scCustom(ninelines, features = "ZEB1", label = TRUE, order = FALSE)
+p2 <- lapply(p1, function (x) x + fix.sc)
+p2
+```
+
+```{r, zeb1_unlabeled}
+p1 <- scCustomize::FeaturePlot_scCustom(ninelines, features = "ZEB1", label = FALSE, order = FALSE)
+p2 <- lapply(p1, function (x) x + fix.sc)
+p2
+```
+
+```{r, zeb2_labeled}
+p1 <- scCustomize::FeaturePlot_scCustom(ninelines, features = "ZEB2", label = TRUE, order = FALSE)
+p2 <- lapply(p1, function (x) x + fix.sc)
+p2
+```
+
+```{r, zeb2_unlabeled}
+p1 <- scCustomize::FeaturePlot_scCustom(ninelines, features = "ZEB2", label = FALSE, order = FALSE)
+p2 <- lapply(p1, function (x) x + fix.sc)
+p2
+```
+
+
+```{r}#
+p1 <- DotPlot_scCustom(ninelines, features = "ZEB1")
+data.frame("cell_line" = p1[["data"]]$id, "ZEB1_pct_exp" = p1[["data"]]$pct.exp, "ZEB1_avg_exp" = p1[["data"]]$avg.exp)
+```
+
+
+```{r}#
+p1 <- DotPlot(ninelines, features = "ZEB2")
+data.frame("cell_line" = p1[["data"]]$id, "ZEB2_pct_exp" = p1[["data"]]$pct.exp, "ZEB2_avg_exp" = p1[["data"]]$avg.exp)
+```
+
+
+## Annotation tables
+
+```{r}
+# create annotation table for zeb1 and zeb2 expressions, use for UMAP later
+target_gene <- "ZEB1"
+identity_column <- "CellLine"
+unique_idents <- unique(ninelines@meta.data[[identity_column]])
+avg_exp_list <- list()
+pct_exp_list <- list()
+
+for (ident in unique_idents) {
+  cells_in_ident <- WhichCells(ninelines, idents = ident)
+  expression_data <- GetAssayData(
+    object = ninelines,
+    assay = "SCT",
+    slot = "data"
+  )[target_gene, cells_in_ident]
+  raw_counts_data <- GetAssayData(
+    object = ninelines,
+    assay = "RNA",
+    slot = "counts"
+  )[target_gene, cells_in_ident]
+  avg_exp <- mean(expression_data)
+  avg_exp_list[[ident]] <- avg_exp
+  pct_exp <- sum(raw_counts_data > 0) / length(raw_counts_data) * 100
+  pct_exp_list[[ident]] <- pct_exp
+}
+
+results_df <- data.frame(
+  # Identity = names(avg_exp_list),
+  Average_Expression = unlist(avg_exp_list),
+  Percentage_Expressed = unlist(pct_exp_list)
+)
+print(results_df)
+
+```
+
+
+```{r}
+target_gene <- "ZEB2"
+identity_column <- "CellLine"
+unique_idents <- unique(ninelines@meta.data[[identity_column]])
+avg_exp_list <- list()
+pct_exp_list <- list()
+
+for (ident in unique_idents) {
+  cells_in_ident <- WhichCells(ninelines, idents = ident)
+  expression_data <- GetAssayData(
+    object = ninelines,
+    assay = "SCT",
+    slot = "data"
+  )[target_gene, cells_in_ident]
+  raw_counts_data <- GetAssayData(
+    object = ninelines,
+    assay = "RNA",
+    slot = "counts"
+  )[target_gene, cells_in_ident]
+  avg_exp <- mean(expression_data)
+  avg_exp_list[[ident]] <- avg_exp
+  pct_exp <- sum(raw_counts_data > 0) / length(raw_counts_data) * 100
+  pct_exp_list[[ident]] <- pct_exp
+}
+
+results_df <- data.frame(
+  # Identity = names(avg_exp_list),
+  Average_Expression = unlist(avg_exp_list),
+  Percentage_Expressed = unlist(pct_exp_list)
+)
+print(results_df)
+
+
+```
+
+
+

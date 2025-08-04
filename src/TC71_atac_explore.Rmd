@@ -1,0 +1,268 @@
+---
+title: "TC71_atac_explore"
+output: html_document
+---
+
+```{r, message=F}
+library(Seurat)
+library(scCustomize)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+# library(SeuratData)
+library(magrittr)
+library(patchwork)
+library(Signac)
+# library(qs)
+library(clusterProfiler)
+library(msigdbr)
+library(enrichplot)
+library(RColorBrewer)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+library(plyranges)
+library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(SeuratDisk)
+library(SeuratObject)
+library(reshape2)
+library(eulerr)
+library(org.Hs.eg.db)
+
+```
+
+# Data input
+
+```{r}
+# read in data
+TC71 <- readRDS("../working_data/TC71_reclustered.rds")
+# og_dataset <- readRDS("../../VTP_SC_seq/ews_tgfb_seurat.rds")
+
+# read in gene sets
+riggi_up <- read.delim(file="../gene_lists/RIGGI_UP.txt", header=FALSE)
+riggi_dn <- read.delim(file="../gene_lists/RIGGI_DN.txt", header=FALSE)
+
+```
+
+# Assess RNA expression data
+
+```{r}
+# adding metadata and idents based on riggi gene lists
+TC71 <- AddModuleScore(TC71, features=riggi_up, name="riggi_up")
+TC71 <- AddModuleScore(TC71, features=riggi_dn, name="riggi_dn")
+
+# breaking riggi distributions
+rup_cutoff <- quantile(TC71$riggi_up1, probs=0.5)
+rup_cutoff <- unname(rup_cutoff)
+
+rdn_cutoff <- quantile(TC71$riggi_dn1, probs=0.5)
+rdn_cutoff <- unname(rdn_cutoff)
+```
+
+## Subset cells by riggi geneset expression
+
+```{r}
+# adding riggi idents
+
+riggi_up_hi <- subset(x = TC71, subset = riggi_up1 > rup_cutoff, slot='data')
+riggi_up_lo <- subset(x = TC71, subset = riggi_up1 > rup_cutoff, slot='data', invert=TRUE)
+TC71 <- SetIdent(TC71, cells=Cells(riggi_up_hi), value='riggi_up_hi')
+TC71 <- SetIdent(TC71, cells=Cells(riggi_up_lo), value='riggi_up_lo')
+TC71$riggi_up_identity <- Idents(TC71)
+remove(riggi_up_hi)
+remove(riggi_up_lo)
+
+riggi_dn_hi <- subset(x = TC71, subset = riggi_dn1 > rdn_cutoff, slot='data')
+riggi_dn_lo <- subset(x = TC71, subset = riggi_dn1 > rdn_cutoff, slot='data', invert=TRUE)
+TC71 <- SetIdent(TC71, cells=Cells(riggi_dn_hi), value='riggi_dn_hi')
+TC71 <- SetIdent(TC71, cells=Cells(riggi_dn_lo), value='riggi_dn_lo')
+TC71$riggi_dn_identity <- Idents(TC71)
+remove(riggi_dn_hi)
+remove(riggi_dn_lo)
+```
+
+```{r}
+# further sorting cells by riggi levels
+hybrid<- subset(x = TC71, subset = riggi_up_identity  == "riggi_up_hi" & riggi_dn_identity == "riggi_dn_hi", slot='data')
+true_low<- subset(x = TC71, subset = riggi_up_identity  == "riggi_up_lo" & riggi_dn_identity == "riggi_dn_hi", slot='data')
+true_hi<- subset(x = TC71, subset = riggi_up_identity  == "riggi_up_hi" & riggi_dn_identity == "riggi_dn_lo", slot='data')
+low_hybrid<- subset(x = TC71, subset = riggi_up_identity  == "riggi_up_lo" & riggi_dn_identity == "riggi_dn_lo", slot='data')
+
+TC71 <- SetIdent(TC71, cells=Cells(hybrid), value='hybrid')
+TC71 <- SetIdent(TC71, cells=Cells(true_low), value='true_low')
+TC71 <- SetIdent(TC71, cells=Cells(true_hi), value='true_high')
+TC71 <- SetIdent(TC71, cells=Cells(low_hybrid), value='low_hybrid')
+Idents(TC71) <- factor(Idents(TC71), levels = c("low_hybrid", "true_low", "true_high", "hybrid"))
+
+TC71$ef_state_identity <- Idents(TC71)
+
+remove(hybrid)
+remove(true_low)
+remove(true_hi)
+remove(low_hybrid)
+
+```
+
+
+
+```{r}
+pal <- c("#FEC98DFF" ,"#FD9567FF", "#F1605DFF", "#CD4071FF" ,"#9F2F7FFF" ,"#721F81FF", "#451077FF")
+FeaturePlot_scCustom(TC71, features="ZEB1", colors_use=pal, reduction = "wnn.umap")
+FeaturePlot_scCustom(TC71, features="ZEB2", colors_use=pal, reduction = "wnn.umap")
+FeaturePlot_scCustom(TC71, features="FOSL2", colors_use=pal, reduction = "wnn.umap")
+FeaturePlot_scCustom(TC71, features="TGFBI", colors_use=pal, reduction = "wnn.umap")
+FeaturePlot_scCustom(TC71, features="MKI67", colors_use=pal, reduction = "wnn.umap")
+
+```
+
+## Random look
+
+```{r}
+Idents(TC71) <- "condition"
+DotPlot_scCustom(TC71, features=c("ZEB1", "ZEB2", "FOSL2", "TGFBI"), scale.min=0, dot.scale=20, scale=TRUE, colors_use=inferno(100), group.by="condition") + ggtitle("TC71 single cell treatments")
+DotPlot_scCustom(TC71, features=c("ZEB1", "ZEB2", "FOSL2", "TGFBI"), scale.min=0, dot.scale=20, scale=TRUE, colors_use=inferno(100), group.by="Phase") + ggtitle("TC71 single cell phases")
+```
+
+
+## Subset cells by zeb2
+
+```{r}
+zeb2_expr <- GetAssayData(TC71, slot = "data")["ZEB2", ]
+
+quantile(FetchData(TC71, vars = "ZEB2")[, 1], probs = seq(0,1,0.1))
+zeb2_bot_30 <- quantile(zeb2_expr, 0.30)
+zeb2_top_30 <- quantile(zeb2_expr, 0.70)
+
+zeb2_bot_30 <- unname(zeb2_bot_30)
+zeb2_top_30 <- unname(zeb2_top_30)
+```
+
+```{r}
+hi_ZEB2 <- subset(TC71, cells = names(zeb2_expr[zeb2_expr > zeb2_top_30]))
+low_ZEB2 <- subset(TC71, cells = names(zeb2_expr[zeb2_expr < zeb2_bot_30]))
+
+mid_zeb2_cells <- names(zeb2_expr[zeb2_expr >= zeb2_bot_30 & zeb2_expr <= zeb2_top_30])
+mid_ZEB2 <- subset(TC71, cells = mid_zeb2_cells)
+
+# this code also sets the active identity of the cells to these categories
+TC71 <- SetIdent(TC71, cells=Cells(hi_ZEB2), value='Hi_ZEB2')
+TC71 <- SetIdent(TC71, cells=Cells(mid_ZEB2), value='Mid_ZEB2')
+TC71 <- SetIdent(TC71, cells=Cells(low_ZEB2), value='Low_ZEB2')
+
+# make sure they are in an appropriate order before saving them to object
+Idents(TC71) <- factor(Idents(TC71), levels = c("Low_ZEB2", "Mid_ZEB2", "Hi_ZEB2"))
+TC71$zeb2_lvl <- Idents(TC71)
+
+remove(hi_ZEB2)
+remove(mid_ZEB2)
+remove(low_ZEB2)
+```
+
+## Dot plots
+
+```{r}
+# dot plots
+DotPlot(
+  object = TC71,
+  features = c("riggi_up1", "riggi_dn1"),
+  group.by = "condition"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(2, 11)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("TC71 riggi genesets by treatment")
+
+DotPlot(
+  object = TC71,
+  features = c("riggi_up1", "riggi_dn1"),
+  group.by = "zeb2_lvl"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(2, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("TC71 riggi genesets by zeb2")
+
+DotPlot(
+  object = TC71,
+  features = c("FOSL2", "JUND", "ZEB1", "TGFBI"),
+  group.by = "ef_state_identity"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(2, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("TC71 GOI by riggi geneset expression levels")
+
+DotPlot(
+  object = TC71,
+  features = c("FOSL2", "JUND", "ZEB1", "TGFBI"),
+  group.by = "zeb2_lvl"
+) +
+  scale_color_viridis(option = "inferno") + scale_size(range = c(2, 10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("TC71 GOI by ZEB2 expression groups")
+
+```
+
+# Prelim ATAC analysis
+
+```{r}
+# reset annotations on Seurat object, they are wonky
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+seqlevelsStyle(annotations) <- "UCSC"
+genome(annotations) <- "hg38"
+Annotation(TC71[["ATAC"]]) <- annotations
+```
+
+
+```{r}
+# Identify DA peaks
+DefaultAssay(TC71) <- 'ATAC'
+Idents(TC71) <- "condition"
+
+# wilcox is the default option for test.use
+tgfb1_da_peaks <- FindMarkers(
+  object = TC71,
+  ident.1 = "TGFB1",
+  ident.2 = "vehicle",
+  test.use = 'wilcox',
+  min.pct = 0.1
+)
+```
+
+
+```{r}
+# record significantly DA peaks
+open_tgfb1 <- rownames(tgfb1_da_peaks[tgfb1_da_peaks$avg_log2FC > 0 & tgfb1_da_peaks$p_val_adj < 0.05, ])
+open_vehicle <- rownames(tgfb1_da_peaks[tgfb1_da_peaks$avg_log2FC < 0 & tgfb1_da_peaks$p_val_adj < 0.05, ])
+```
+
+```{r}
+# find genes associated with DA peaks
+closest_genes_tgfb1 <- ClosestFeature(TC71, regions = open_tgfb1)
+closest_genes_vehicle <- ClosestFeature(TC71, regions = open_vehicle) 
+
+TC71_tgfb1_accessible_genes <- closest_genes_tgfb1$gene_name
+TC71_tgfb1_inaccessible_genes <- closest_genes_vehicle$gene_name
+```
+
+```{r}
+# import rna assay marker genes for the same contrast
+markergenes_TC71_tgfb1_veh <- read.csv("../../VTP_SC_seq/data/TC71_tgfb1_vs_veh.csv")
+tgfb1_upreg <- markergenes_TC71_tgfb1_veh[markergenes_TC71_tgfb1_veh$avg_log2FC > 0 & markergenes_TC71_tgfb1_veh$p_val_adj < 0.05, "X"]
+
+tgfb1_dnreg <- markergenes_TC71_tgfb1_veh[markergenes_TC71_tgfb1_veh$avg_log2FC < 0 & markergenes_TC71_tgfb1_veh$p_val_adj < 0.05, "X"]
+
+
+```
+
+```{r}
+tgfb1_vs_veh_multi_upregs <- list(ATAC = unique(TC71_tgfb1_accessible_genes), RNA = unique(tgfb1_upreg))
+
+# Convert to eulerr-compatible format
+fit <- euler(tgfb1_vs_veh_multi_upregs)
+plot(fit, fills = c("red", "yellow"), quantities = TRUE, main = "TC71 tgfb1_vs_veh multi upreg overlaps")
+
+tgfb1_vs_veh_multi_dnregs <- list(ATAC = unique(TC71_tgfb1_inaccessible_genes), RNA = unique(tgfb1_dnreg))
+
+# Convert to eulerr-compatible format
+fit <- euler(tgfb1_vs_veh_multi_dnregs)
+plot(fit, fills = c("red", "yellow"), quantities = TRUE, main = "TC71 tgfb1_vs_veh multi downreg overlaps")
+```
+
