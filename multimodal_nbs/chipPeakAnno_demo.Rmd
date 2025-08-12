@@ -1,0 +1,92 @@
+---
+title: "chipPeakAnno_demo"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(ChIPpeakAnno)
+library(dplyr)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(EnsDb.Hsapiens.v86)
+library(biomaRt)
+library(plyranges)
+```
+
+
+```{r, warning=FALSE}
+# load data in
+CHLA10 <- readRDS("../working_data/CHLA10_subset.rds")
+fli1_macs2_r1 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R1.macs2.peaks.cut.bed")
+fli1_macs2_r2 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R2.macs2.peaks.cut.bed")
+
+fli1_pks <- findOverlapsOfPeaks(fli1_macs2_r1, fli1_macs2_r2) # OVERLAP PEAKS -- used later -- can overlap replicates or different peaks
+```
+
+
+```{r}
+# get DA ranges and genes
+DefaultAssay(CHLA10) <- "ATAC"
+Idents(CHLA10) <- "condition"
+da_ranges <- FindMarkers(CHLA10, ident.1 = "TGFB1", ident.2 = "vehicle")
+da_ranges <- subset(da_ranges, da_ranges$p_val_adj <= 0.05)
+da_genes <- ClosestFeature(CHLA10, regions = rownames(da_ranges))
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+# annotate peaks on hg38 genome -- will be warning message since EnsDb is NCBI format, fli1 peaks are UCSC format
+fli1_peak_annot <- annotatePeakInBatch(fli1_pks[["peaklist"]][["fli1_macs2_r1///fli1_macs2_r2"]], AnnotationData = transcripts(EnsDb.Hsapiens.v86))
+
+# add gene symbols to annotation
+mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl")
+fli1_peak_ensembl <- addGeneIDs(fli1_peak_annot, mart = mart, feature_id_type = "ensembl_transcript_id", IDs2Add = "hgnc_symbol")
+
+# ensure all rows of object are unique
+fli1_pks_2 <- unique(fli1_peak_ensembl)
+start(fli1_pks_2) <- as.numeric(start(fli1_pks))
+end(fli1_pks_2) <- as.numeric(end(fli1_pks))
+
+# fli1_pks$start_position <- as.numeric(fli1_pks$start_position)
+
+```
+
+
+```{r}
+# create gRanges object from DA peak ranges
+da_coords <- rownames(da_ranges)
+coords_parts <- strsplit(da_coords, split = "-")
+coords_df <- data.frame(
+  seqnames = sapply(coords_parts, `[`, 1),
+  start = as.numeric(sapply(coords_parts, `[`, 2)),
+  end = as.numeric(sapply(coords_parts, `[`, 3))
+)
+da_pks <- as_granges(coords_df)
+
+```
+
+
+```{r, fig.width=5, fig.height=5, message=FALSE}
+# what proportions of the peaks overlap?
+makeVennDiagram(fli1_pks, totalTest = 100000, fill = c("#009E73", "#F0E442"),
+                        col = c("#D55E00", "#0072B2"),
+                        cat.col = c("#D55E00", "#0072B2"))
+```
+
+
+```{r, fig.width=5, fig.height=5, message=FALSE}
+# how do the peaks overlap with each other?
+unique(fli1_pks$overlappingPeaks[["fli1_macs2_r1///fli1_macs2_r2"]][["overlapFeature"]])
+pie1(table(fli1_pks$overlappingPeaks[["fli1_macs2_r1///fli1_macs2_r2"]][["overlapFeature"]]))
+```
+
+
+```{r, fig.width=6, fig.height=6, warning=FALSE}
+# what genomic features correlate with the peaks?
+macs_peaks <- GRangesList(rep1 = fli1_macs2_r1, rep2 = fli1_macs2_r2)
+genomicElementDistribution(macs_peaks, TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene)
+```
+
+

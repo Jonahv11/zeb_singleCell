@@ -3,6 +3,8 @@ title: "peaks_atac_cnr"
 output: html_document
 ---
 
+## load data up
+
 ```{r, message=FALSE}
 library(Seurat)
 library(Signac)
@@ -12,6 +14,11 @@ library(EnsDb.Hsapiens.v86)
 library(biomaRt)
 library(UpSetR)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(clusterProfiler)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(msigdbr)
+library(org.Hs.eg.db)
+library(ggplot2)
 ```
 
 
@@ -21,21 +28,38 @@ library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 # CHLA10 <- subset(vtp_tgfb, vtp_tgfb$cell_line == "CHLA10")
 # saveRDS(CHLA10, "../working_data/CHLA10_subset.rds")
 CHLA10 <- readRDS("../working_data/CHLA10_subset.rds")
-fli1_peaks <- read_bed_graph("../../../ewrenn/smad_cutnrun/results/03_peak_calling/04_called_peaks/seacr/TGFB_FLI1_R1.seacr.peaks.stringent.bed")
+# fli1_peaks <- read_bed_graph("../../../ewrenn/smad_cutnrun/results/03_peak_calling/04_called_peaks/seacr/TGFB_FLI1_R1.seacr.peaks.stringent.bed")
+fli1_seacr_r1 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R1.seacr.peaks.stringent.bed")
+fli1_seacr_r2 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R2.seacr.peaks.stringent.bed")
+fli1_relax_r1 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R1.seacr.peaks.relaxed.bed")
+
+# fli1_consensus_peaks <- toGRanges("../../../ewrenn/smad_cutnrun/results/03_peak_calling/05_consensus_peaks/TGFB_FLI1.seacr.consensus.peak_counts.bed") # error reading this file, check with emma
+fli1_macs2_r1 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R1.macs2.peaks.cut.bed")
+fli1_macs2_r2 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R2.macs2.peaks.cut.bed")
 ```
 
+```{r}
+hist(width(fli1_macs2_r1))
+hist(width(fli1_seacr_r1))
+hist(width(fli1_relax_r1))
+
+```
+
+## select ranges, genes from signac object
 
 ```{r}
+# get DA ranges and genes
 DefaultAssay(CHLA10) <- "ATAC"
 Idents(CHLA10) <- "condition"
 da_ranges <- FindMarkers(CHLA10, ident.1 = "TGFB1", ident.2 = "vehicle")
 da_ranges <- subset(da_ranges, da_ranges$p_val_adj <= 0.05)
+da_genes <- ClosestFeature(CHLA10, regions = rownames(da_ranges))
 ```
 
 
 ```{r, message=FALSE, warning=FALSE}
 # annotate peaks on hg38 genome -- will be warning message since EnsDb is NCBI format, fli1 peaks are UCSC format
-fli1_peak_annot <- annotatePeakInBatch(fli1_peaks, AnnotationData = transcripts(EnsDb.Hsapiens.v86))
+fli1_peak_annot <- annotatePeakInBatch(fli1_macs2_r1, AnnotationData = transcripts(EnsDb.Hsapiens.v86))
 
 # add gene symbols to annotation
 mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl")
@@ -64,14 +88,16 @@ da_pks <- as_granges(coords_df)
 
 ```
 
+## compare technical replicates
 
 ```{r}
-peak_overlaps <- findOverlapsOfPeaks(fli1_pks, da_pks)
-names(peak_overlaps)
+# overlap peaks
+peak_overlaps <- findOverlapsOfPeaks(fli1_pks, fli1_macs2_r2)
+# names(peak_overlaps)
 ```
 
 
-```{r, fig.width=5, fig.height=5}
+```{r, fig.width=5, fig.height=5, message=FALSE}
 # what proportions of the peaks overlap?
 makeVennDiagram(peak_overlaps, totalTest = 100000, fill = c("#009E73", "#F0E442"),
                         col = c("#D55E00", "#0072B2"),
@@ -79,25 +105,41 @@ makeVennDiagram(peak_overlaps, totalTest = 100000, fill = c("#009E73", "#F0E442"
 ```
 
 
-```{r, fig.width=5, fig.height=5}
+```{r, fig.width=5, fig.height=5, message=FALSE}
 # how do the peaks overlap with each other?
-unique(peak_overlaps$overlappingPeaks[["fli1_pks///da_pks"]][["overlapFeature"]])
-pie1(table(peak_overlaps$overlappingPeaks[["fli1_pks///da_pks"]][["overlapFeature"]]))
+unique(peak_overlaps$overlappingPeaks[["fli1_pks///fli1_macs2_r2"]][["overlapFeature"]])
+pie1(table(peak_overlaps$overlappingPeaks[["fli1_pks///fli1_macs2_r2"]][["overlapFeature"]]))
 ```
 
 
-```{r, fig.width=6, fig.height=6}
-# figure out how to interpret this
+```{r, fig.width=6, fig.height=6, warning=FALSE}
+# what genomic features correlate with the CNR peaks?
 
-res <- genomicElementUpSetR(peaks = peak_overlaps[["peaklist"]][["fli1_pks///da_pks"]], 
-                            TxDb.Hsapiens.UCSC.hg38.knownGene)
-
-upset(res[["plotData"]], 
-      nsets = length(colnames(res$plotData)), 
-      nintersects = NA)
+macs_peaks <- GRangesList(rep1 = fli1_macs2_r1, rep2 = fli1_macs2_r2)
+genomicElementDistribution(macs_peaks, TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene)
 
 ```
 
+
+```{r, fig.width=6, fig.height=6, warning=FALSE}
+# what genomic features correlate with the CNR peaks?
+
+macs_peaks <- GRangesList(rep1 = fli1_pks, rep2 = da_pks)
+genomicElementDistribution(macs_peaks, TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+```
+
+
+## peak annotation?
+
+```{r, message=FALSE}
+fli1_ovr_pks <- findOverlapsOfPeaks(fli1_pks, fli1_macs2_r2)
+annot_pks <- annotatePeakInBatch(fli1_ovr_pks$peaklist$`fli1_pks///fli1_macs2_r2`, mart = mart)
+
+```
+
+
+## plot atac signal with DA + CnR peaks
 
 ```{r}
 # function to create genomic range for a gene of interest -- helpful for peak plots
@@ -117,12 +159,15 @@ goi_to_roi <- function(gene_name) {
 
 
 ```{r}
-idents.plot <- c("vehicle", "TGFB1", "TGFB2")
+# create coverage plot with ATAC signal, CnR peaks, DA (TGFB1 vs veh) ATAC peaks
+
+idents.plot <- c("vehicle", "TGFB1", "TGFB2") # idents to plot
+selectgene <- "TGFBI" # pick gene/region to plot around
 
 covplot <- CoveragePlot(
   object = CHLA10,
-  region = "TGFBI",
-  # features = "TGFBI",
+  region = selectgene, peaks = FALSE,
+  # features = selectgene,
   expression.assay = "RNA",
   idents = idents.plot,
   extend.upstream = 500,
@@ -131,28 +176,108 @@ covplot <- CoveragePlot(
 
 peak_plot1 <- PeakPlot(
   object = CHLA10,
-  region = goi_to_roi("TGFBI"),
-  peaks = fli1_pks, sep = c("-","-"), 
+  region = goi_to_roi(selectgene), # function from last block
+  peaks = peak_overlaps$mergedPeaks, sep = c("-","-"), 
   extend.upstream = 500,
   extend.downstream = 10000
-)
+) + labs(caption = "^ FLI1")
 
 peak_plot2 <- PeakPlot(
   object = CHLA10,
-  region = goi_to_roi("TGFBI"),
+  region = goi_to_roi(selectgene),
   peaks = da_pks, sep = c("-","-"), 
   extend.upstream = 500,
   extend.downstream = 10000
-)
+) + labs(caption = "^ DA")
 
+CombineTracks(plotlist = list(covplot, peak_plot1, peak_plot2))
+
+```
+
+
+## ORA for DA genes
+
+```{r}
+# basic ORA code, uses clusterprofiler
+da_coding <- subset(da_genes, da_genes$type == "cds") # subset DA genes -> specifically DA coding region 
+
+t2g_hallmarks <- msigdbr(species = "Homo sapiens", collection ="H") %>%
+  dplyr::select(gs_name, gene_symbol)
+t2g_reactome <- msigdbr(species = "Homo sapiens", collection ="C2", subcollection = "CP:REACTOME") %>%
+  dplyr::select(gs_name, gene_symbol)
+
+
+DA_goAll <- enrichGO(da_coding$gene_name, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+DA_hallmarks <- enricher(da_coding$gene_name, TERM2GENE = t2g_hallmarks)
+DA_reactome <- enricher(da_coding$gene_name, TERM2GENE = t2g_reactome)
 
 ```
 
 
 ```{r}
-CombineTracks(plotlist = list(covplot, peak_plot1, peak_plot2))
+dotplot(DA_goAll)
+dotplot(DA_hallmarks)
+dotplot(DA_reactome)
 ```
 
+
+## compare FLI1 to DA peaks
+
+```{r}
+# overlap DA ATAC regions with 'consensus' FLI1 peaks of the same condition
+# compare plyranges overlaps to chippeakanno overlaps
+plyranges_ovr <- find_overlaps(da_pks, peak_overlaps[["mergedPeaks"]])
+chippeakanno_ovr <- findOverlapsOfPeaks(da_pks, peak_overlaps[["mergedPeaks"]])
+
+# spoiler alert: they conduct overlaps pretty much the same by default
+```
+
+
+```{r}
+epi_tgfb_response_genes <- ClosestFeature(CHLA10, regions = plyranges_ovr) # can use granges obj too
+```
+
+### ORA for overlaps
+
+```{r}
+overlap_coding <- subset(epi_tgfb_response_genes, epi_tgfb_response_genes$type == "cds"|epi_tgfb_response_genes$type == "exon") # coding and exon regions 
+
+overlap_goAll <- enrichGO(overlap_coding$gene_name, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+overlap_hallmarks <- enricher(overlap_coding$gene_name, TERM2GENE = t2g_hallmarks)
+overlap_reactome <- enricher(overlap_coding$gene_name, TERM2GENE = t2g_reactome)
+
+```
+
+
+```{r}
+dotplot(overlap_goAll, title = "ATAC accessibility and FLI1 binding GO:ALL")
+dotplot(overlap_hallmarks, title = "ATAC accessibility and FLI1 binding Hallmarks")
+dotplot(overlap_reactome, title = "ATAC accessibility and FLI1 binding Reactome")
+
+```
+
+
+
+## CnR peak motif matrix
+
+```{r}
+# duplicate seurat object so it doesn't get messed up
+sign_obj <- CHLA10
+true_fli1_pks <- find_overlaps(fli1_pks, fli1_macs2_r2) # i like the object resulting from plyranges method
+
+# replace ranges in object with FLI1 peaks
+sign_obj@assays[["ATAC"]]@ranges <- true_fli1_pks
+
+# make new motifs to add back to the object, making a new peaks x motifs matrix
+library(JASPAR2020)
+library(TFBSTools)
+pfm <- getMatrixSet(x = JASPAR2020,opts = list(collection = "CORE", tax_group = "vertebrates", all_versions = FALSE))
+sign_obj <- AddMotifs(sign_obj, genome = BSgenome.Hsapiens.UCSC.hg38, pfm = pfm)
+
+# read in counts matrix?
+counts_mtx <- Read10X("../../../ewrenn/smad_cutnrun/results/04_reporting/deeptools_heatmaps/gene_all/all_genes.computeMatrix.mat.gz")
+
+```
 
 
 

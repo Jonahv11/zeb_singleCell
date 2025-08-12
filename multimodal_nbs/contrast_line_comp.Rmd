@@ -1,0 +1,72 @@
+---
+title: "contrast_line_comp"
+output: html_document
+---
+
+
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(dplyr)
+library(eulerr)
+library(clusterProfiler)
+library(msigdbr)
+library(org.Hs.eg.db)
+
+```
+
+
+
+```{r}
+vtp_tgfb <- readRDS("../source_data/vtp_tgfb_multi.rds")
+
+
+```
+
+
+```{r}
+CHLA10_DA <- FindMarkers(vtp_tgfb, ident.1 = "CHLA10_TGFB1", ident.2 = "CHLA10_vehicle")
+TC71_DA <- FindMarkers(vtp_tgfb, ident.1 = "TC71_TGFB1", ident.2 = "TC71_vehicle")
+
+loose_overlaps <- intersect(rownames(subset(CHLA10_DA,CHLA10_DA$p_val<=0.0005)),rownames(subset(TC71_DA,TC71_DA$p_val<=0.0005)))
+loose_genes <- ClosestFeature(vtp_tgfb, loose_overlaps)
+
+CHLA10_DA <- subset(CHLA10_DA, CHLA10_DA$p_val_adj <= 0.05)
+CHLA10_genes <- ClosestFeature(vtp_tgfb, rownames(CHLA10_DA))
+TC71_DA <- subset(TC71_DA, TC71_DA$p_val_adj <= 0.05)
+TC71_genes <- ClosestFeature(vtp_tgfb, rownames(TC71_DA))
+
+```
+
+
+```{r}
+trt_response_genes <- list(CHLA10 = unique(CHLA10_genes$gene_name), TC71 = unique(TC71_genes$gene_name))
+fit <- euler(trt_response_genes)
+plot(fit, fills = c("red", "yellow"), quantities = TRUE, main = "Response to TGFB1 treatment by Cell line")
+
+
+```
+
+
+```{r}
+overlap_genes <- intersect(trt_response_genes$CHLA10, trt_response_genes$TC71)
+
+t2g_hallmarks <- msigdbr(species = "Homo sapiens", collection ="H") %>%
+  dplyr::select(gs_name, gene_symbol)
+t2g_reactome <- msigdbr(species = "Homo sapiens", collection ="C2", subcollection = "CP:REACTOME") %>%
+  dplyr::select(gs_name, gene_symbol)
+
+# use overlap_genes or loose_genes$gene_name
+DA_goAll <- enrichGO(overlap_genes, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10)
+DA_hallmarks <- enricher(overlap_genes, TERM2GENE = t2g_hallmarks)
+DA_reactome <- enricher(overlap_genes, TERM2GENE = t2g_reactome)
+```
+
+
+```{r}
+dotplot(DA_goAll)
+# dotplot(DA_hallmarks)
+# dotplot(DA_reactome)
+```
+
+
