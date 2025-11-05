@@ -1,5 +1,5 @@
 ---
-title: "motif_volcano"
+title: "a673_motif_volcano"
 output: html_document
 ---
 
@@ -16,26 +16,26 @@ library(dplyr)
 knitr::opts_chunk$set(dpi=600,
                       echo=TRUE, warning=FALSE, message=FALSE)
 knitr::opts_chunk$set(dev.args=list(bg="transparent"))
-knitr::opts_chunk$set(fig.path = "/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/figs/chla10_motif_enrich_",  dev = c("svglite", "png"))
+knitr::opts_chunk$set(fig.path = "/data/hps/assoc/private/ewing_beti/user/jvale8/zeb_singleCell/figs/a673_motif_enrich_",  dev = c("svglite", "png"))
 ```
 
 
 ```{r}
 # read in data
-CHLA10 <- readRDS("../working_data/CHLA10_processed.rds")
-Idents(CHLA10) <- "cell_line_cond"
-DefaultAssay(CHLA10) <- "ATAC"
+A673 <- readRDS("../working_data/A673_processed.rds")
+Idents(A673) <- "cell_line_cond"
+DefaultAssay(A673) <- "ATAC"
 ```
 
 
 ```{r}
 # calculate motif enrichment
-marker_ranges <- FindMarkers(CHLA10, ident.1 = "CHLA10_TGFB1", ident.2 = "CHLA10_vehicle")
+marker_ranges <- FindMarkers(A673, ident.1 = "A673_TGFB1", ident.2 = "A673_vehicle")
 significant_ranges <- rownames(marker_ranges[marker_ranges$avg_log2FC > 0 & marker_ranges$p_val_adj < 0.05, ])
-motif_enrichment_sig_ranges <- FindMotifs(CHLA10, features = significant_ranges)
+motif_enrichment_sig_ranges <- FindMotifs(A673, features = significant_ranges)
 grant_motifs <- dplyr::select(motif_enrichment_sig_ranges, percent.observed, percent.background, fold.enrichment, p.adjust)
 rownames(grant_motifs) <- motif_enrichment_sig_ranges$motif.name
-# write.csv(grant_motifs, "data/chla10_tgfb1_motif_enrichment.csv")
+write.csv(grant_motifs, "data/A673_tgfb1_motif_enrichment.csv")
 ```
 
 
@@ -54,7 +54,7 @@ EnhancedVolcano(motif_enrichment_sig_ranges, lab=motif_enrichment_sig_ranges$mot
                 pCutoff = 1e-2, FCcutoff=1.5, pointSize=3, drawConnectors=TRUE, labSize=5,
                 col=c("lightgray", "darkgray", "darkgray", "red"), labCol="black", labFace = "bold",
                 boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf) + coord_flip() + 
-  ggtitle("TF motif enrichment in TGFβ1 induced differentially \n accessible peaks - CHLA10")
+  ggtitle("TF motif enrichment in TGFβ1 induced differentially \n accessible peaks - A673")
 
 ```
 
@@ -66,6 +66,6 @@ EnhancedVolcano(motif_enrichment_sig_ranges, lab=motif_enrichment_sig_ranges$mot
                 pCutoff = 1e-2, FCcutoff=1.5, pointSize=3, drawConnectors=TRUE, labSize=5,
                 col=c("lightgray", "darkgray", "darkgray", "red"), labCol="black", labFace = "bold",
                 boxedLabels = TRUE, widthConnectors=1, max.overlaps=Inf) + coord_flip() + 
-  ggtitle("TF motif enrichment in TGFB1 induced differentially \n accessible peaks - CHLA10")
+  ggtitle("TF motif enrichment in TGFB1 induced differentially \n accessible peaks - A673")
 
 ```

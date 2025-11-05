@@ -10,6 +10,7 @@ zeb1_contrasts/working_data/
 cell_line_contrasts/results/
 cell_line_contrasts/working_data/
 figs/
+deliverable_nbs/data/
 
 # specific files
 gene_lists/cisBP_human_pfms_2021.rds

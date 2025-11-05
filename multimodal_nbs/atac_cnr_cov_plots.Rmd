@@ -17,10 +17,17 @@ library(plyranges)
 
 ```{r, warning=FALSE}
 # load data in
-CHLA10 <- readRDS("../working_data/CHLA10_subset.rds")
-fli1_macs2_r1 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R1.macs2.peaks.cut.bed")
-fli1_macs2_r2 <- toGRanges("../../../ewrenn/smad_cutnrun/results/04_reporting/igv/TGFB_FLI1_R2.macs2.peaks.cut.bed")
+CHLA10 <- readRDS("../working_data/CHLA10_linked.rds")
+fli1_macs2_r1 <- toGRanges("../../../ewrenn/cutandrun_results_250827/04_reporting/igv/veh_FLI1_R1.macs2.peaks.cut.bed")
+fli1_macs2_r2 <- toGRanges("../../../ewrenn/cutandrun_results_250827/04_reporting/igv/veh_FLI1_R2.macs2.peaks.cut.bed")
 fli1_pks <- findOverlapsOfPeaks(fli1_macs2_r1, fli1_macs2_r2) # overlap fli1 peak technical replicates
+# other TFs
+smad2_macs2_r1 <- toGRanges("../../../ewrenn/cutandrun_results_250827/04_reporting/igv/TGFB_SMAD2_R1.macs2.peaks.cut.bed")
+smad2_macs2_r2 <- toGRanges("../../../ewrenn/cutandrun_results_250827/04_reporting/igv/TGFB_SMAD2_R2.macs2.peaks.cut.bed")
+smad2_pks <- findOverlapsOfPeaks(smad2_macs2_r1, smad2_macs2_r2) 
+smad4_macs2_r1 <- toGRanges("../../../ewrenn/cutandrun_results_250827/04_reporting/igv/TGFB_SMAD4_R1.macs2.peaks.cut.bed")
+smad4_macs2_r2 <- toGRanges("../../../ewrenn/cutandrun_results_250827/04_reporting/igv/TGFB_SMAD4_R2.macs2.peaks.cut.bed")
+smad4_pks <- findOverlapsOfPeaks(smad4_macs2_r1, smad4_macs2_r2) 
 ```
 
 
@@ -61,42 +68,87 @@ goi_to_roi <- function(gene_name) {
 
 
 ```{r}
-# create coverage plot with ATAC signal, CnR peaks, DA (TGFB1 vs veh) ATAC peaks
+# create coverage plot with ATAC signal, C&R peaks, DA (TGFB1 vs veh) ATAC peaks
+multi_cov_plot <- function(goi){
+  idents.plot <- c("vehicle", "TGFB1") # idents to plot
+  selectgene <- goi # pick gene/region to plot around
+  
+  covplot <- CoveragePlot(
+    object = CHLA10,
+    region = selectgene,
+    peaks = FALSE,
+    # features = selectgene,
+    expression.assay = "RNA",
+    idents = idents.plot,
+    extend.upstream = 500,
+    extend.downstream = 10000
+    )
+  
+  # linkplot <- LinkPlot(
+  #   object = CHLA10,
+  #   region = goi_to_roi(selectgene),
+  #   extend.upstream = 500,
+  #   extend.downstream = 10000
+  #                      )
+  
+  peak_plot1 <- PeakPlot(
+    object = CHLA10,
+    region = goi_to_roi(selectgene), # function from last block
+    peaks = fli1_pks$mergedPeaks, sep = c("-","-"), 
+    extend.upstream = 500,
+    extend.downstream = 10000
+  ) + labs(caption = "^ FLI1")
+  
+  peak_plot2 <- PeakPlot(
+    object = CHLA10,
+    region = goi_to_roi(selectgene),
+    peaks = smad2_pks$mergedPeaks, sep = c("-","-"), 
+    extend.upstream = 500,
+    extend.downstream = 10000
+  ) + labs(caption = "^ SMAD2")
+  
+  peak_plot3 <- PeakPlot(
+    object = CHLA10,
+    region = goi_to_roi(selectgene),
+    peaks = smad4_pks$mergedPeaks, sep = c("-","-"), 
+    extend.upstream = 500,
+    extend.downstream = 10000
+  ) + labs(caption = "^ SMAD4")
+  
+  peak_plot4 <- PeakPlot(
+    object = CHLA10,
+    region = goi_to_roi(selectgene),
+    peaks = da_pks, sep = c("-","-"), 
+    extend.upstream = 500,
+    extend.downstream = 10000
+  ) + labs(caption = "^ DA")
+  
+  plot <- CombineTracks(plotlist = list(covplot, peak_plot1, peak_plot2, peak_plot3, peak_plot4), )
+  return(plot)
+}
+```
 
-idents.plot <- c("vehicle", "TGFB1", "TGFB2") # idents to plot
-selectgene <- "TGFBI" # pick gene/region to plot around
+```{r}
+multi_cov_plot("RGS5")
+multi_cov_plot("ETS1")
+multi_cov_plot("TGFBR2")
+multi_cov_plot("TGFBI")
+multi_cov_plot("NT5E")
+multi_cov_plot("TNC")
+multi_cov_plot("TGFB2")
+multi_cov_plot("FBN1")
+multi_cov_plot("LOX")
 
-covplot <- CoveragePlot(
-  object = CHLA10,
-  region = selectgene,
-  peaks = FALSE,
-  # features = selectgene,
-  expression.assay = "RNA",
-  idents = idents.plot,
-  extend.upstream = 500,
-  extend.downstream = 10000
-  )
-
-peak_plot1 <- PeakPlot(
-  object = CHLA10,
-  region = goi_to_roi(selectgene), # function from last block
-  peaks = fli1_pks$mergedPeaks, sep = c("-","-"), 
-  extend.upstream = 500,
-  extend.downstream = 10000
-) + labs(caption = "^ FLI1")
-
-peak_plot2 <- PeakPlot(
-  object = CHLA10,
-  region = goi_to_roi(selectgene),
-  peaks = da_pks, sep = c("-","-"), 
-  extend.upstream = 500,
-  extend.downstream = 10000
-) + labs(caption = "^ DA")
-
-CombineTracks(plotlist = list(covplot, peak_plot1, peak_plot2))
 ```
 
 
 ```{r}
-sessionInfo()
+# LinkPlot(CHLA10_linked, region = goi_to_roi("RGS5"))
+
+# CoveragePlot(CHLA10, goi_to_roi("TGFB2"), annotation = TRUE, peaks = TRUE, tile = TRUE, links = TRUE, idents = c("vehicle", "TGFB1"))
+```
+
+
+```{r}
+# sessionInfo()
 ```
